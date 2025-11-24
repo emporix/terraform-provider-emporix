@@ -66,13 +66,15 @@ func (c *EmporixClient) logRequest(req *http.Request, bodyBytes []byte) {
 		return
 	}
 
+	// Extract tf_req_id from context if available
+	logFields := map[string]interface{}{
+		"subsystem": "http",
+		"method":    req.Method,
+		"url":       req.URL.String(),
+	}
+
 	// Log with http subsystem
-	tflog.Debug(c.ctx, "API Request",
-		map[string]interface{}{
-			"subsystem": "http",
-			"method":    req.Method,
-			"url":       req.URL.String(),
-		})
+	tflog.Debug(c.ctx, "API Request", logFields)
 
 	// Log body if present - pretty print for readability
 	if len(bodyBytes) > 0 {

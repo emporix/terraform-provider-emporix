@@ -82,6 +82,12 @@ Common OS/Architecture combinations:
 
 ### Provider Configuration
 
+The provider supports two authentication methods:
+
+#### Method 1: Client Credentials (Recommended)
+
+The provider automatically generates an access token using your OAuth2 client credentials:
+
 ```hcl
 terraform {
   required_providers {
@@ -93,9 +99,23 @@ terraform {
 }
 
 provider "emporix" {
-  tenant       = "your-tenant-name"  # Or set EMPORIX_TENANT env var
-  access_token = "your-access-token" # Or set EMPORIX_ACCESS_TOKEN env var
-  api_url      = "https://api.emporix.io" # Optional, defaults to https://api.emporix.io
+  tenant        = "your-tenant-name"
+  client_id     = "your-client-id"
+  client_secret = "your-client-secret"
+  # Optional: scopes (if not provided, no scope parameter is sent)
+  # scope         = "tenant=your-tenant-name site.site_read site.site_manage"
+}
+```
+
+#### Method 2: Pre-generated Access Token
+
+If you already have an access token:
+
+```hcl
+provider "emporix" {
+  tenant       = "your-tenant-name"
+  access_token = "your-access-token"
+  api_url      = "https://api.emporix.io" # Optional, defaults to this
 }
 ```
 
@@ -104,10 +124,36 @@ provider "emporix" {
 Instead of hardcoding credentials in your Terraform configuration, you can use environment variables:
 
 ```bash
+# Method 1: Using client credentials (recommended)
+export EMPORIX_TENANT="your-tenant-name"
+export EMPORIX_CLIENT_ID="your-client-id"
+export EMPORIX_CLIENT_SECRET="your-client-secret"
+# Optional: scopes (if not set, no scope parameter is sent)
+# export EMPORIX_SCOPE="tenant=your-tenant-name site.site_read site.site_manage"
+
+# Method 2: Using pre-generated token
 export EMPORIX_TENANT="your-tenant-name"
 export EMPORIX_ACCESS_TOKEN="your-access-token"
-export EMPORIX_API_URL="https://api.emporix.io"  # Optional
+
+# Optional for both methods
+export EMPORIX_API_URL="https://api.emporix.io"
 ```
+
+### Configuration Reference
+
+| Attribute | Description | Environment Variable | Required |
+|-----------|-------------|---------------------|----------|
+| `tenant` | Emporix tenant name (lowercase) | `EMPORIX_TENANT` | Yes |
+| `client_id` | OAuth2 client ID for token generation | `EMPORIX_CLIENT_ID` | If no `access_token` |
+| `client_secret` | OAuth2 client secret for token generation | `EMPORIX_CLIENT_SECRET` | If no `access_token` |
+| `access_token` | Pre-generated OAuth2 access token | `EMPORIX_ACCESS_TOKEN` | If no client credentials |
+| `scope` | OAuth2 scopes (space-separated) | `EMPORIX_SCOPE` | No |
+| `api_url` | Emporix API base URL | `EMPORIX_API_URL` | No (defaults to `https://api.emporix.io`) |
+
+**Note:** 
+- You must provide either `access_token` OR both `client_id` and `client_secret`. 
+- The provider will automatically generate a token from client credentials if no access token is provided.
+- If `scope` is not provided, no scope parameter is sent in the OAuth request.
 
 ### Resource: emporix_sitesettings
 

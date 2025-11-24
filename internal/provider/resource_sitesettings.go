@@ -305,25 +305,25 @@ func sameElements(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
-
+	
 	counts := make(map[string]int)
 	for _, v := range a {
 		counts[v]++
 	}
-
+	
 	for _, v := range b {
 		counts[v]--
 		if counts[v] < 0 {
 			return false
 		}
 	}
-
+	
 	for _, count := range counts {
 		if count != 0 {
 			return false
 		}
 	}
-
+	
 	return true
 }
 
