@@ -2,19 +2,25 @@ package provider
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 type EmporixClient struct {
 	Tenant      string
 	AccessToken string
 	ApiUrl      string
-	Debug       bool // Enable detailed HTTP logging
+	ctx         context.Context
+}
+
+func (c *EmporixClient) SetContext(ctx context.Context) {
+	c.ctx = ctx
 }
 
 func (c *EmporixClient) doRequest(method, path string, body interface{}) (*http.Response, error) {
@@ -40,10 +46,8 @@ func (c *EmporixClient) doRequest(method, path string, body interface{}) (*http.
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "*/*")
 
-	// Log request if debug is enabled or TF_LOG is set
-	if c.Debug || os.Getenv("TF_LOG") == "TRACE" || os.Getenv("TF_LOG") == "DEBUG" {
-		c.logRequest(req, bodyBytes)
-	}
+	// Log request
+	c.logRequest(req, bodyBytes)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -51,71 +55,72 @@ func (c *EmporixClient) doRequest(method, path string, body interface{}) (*http.
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
 
-	// Log response if debug is enabled
-	if c.Debug || os.Getenv("TF_LOG") == "TRACE" || os.Getenv("TF_LOG") == "DEBUG" {
-		c.logResponse(resp)
-	}
+	// Log response
+	c.logResponse(resp)
 
 	return resp, nil
 }
 
 func (c *EmporixClient) logRequest(req *http.Request, bodyBytes []byte) {
-	fmt.Fprintf(os.Stderr, "\n[DEBUG] Emporix API Request:\n")
-	fmt.Fprintf(os.Stderr, "================================================================================\n")
-	fmt.Fprintf(os.Stderr, "%s %s\n", req.Method, req.URL.String())
-	fmt.Fprintf(os.Stderr, "Headers:\n")
-	for key, values := range req.Header {
-		for _, value := range values {
-			// Mask the authorization token
-			if key == "Authorization" {
-				fmt.Fprintf(os.Stderr, "  %s: Bearer ***REDACTED***\n", key)
-			} else {
-				fmt.Fprintf(os.Stderr, "  %s: %s\n", key, value)
-			}
-		}
+	if c.ctx == nil {
+		return
 	}
+
+	// Log with http subsystem
+	tflog.Debug(c.ctx, "API Request",
+		map[string]interface{}{
+			"subsystem": "http",
+			"method":    req.Method,
+			"url":       req.URL.String(),
+		})
+
+	// Log body if present - pretty print for readability
 	if len(bodyBytes) > 0 {
-		fmt.Fprintf(os.Stderr, "Body:\n")
 		// Pretty print JSON
 		var prettyJSON bytes.Buffer
-		if err := json.Indent(&prettyJSON, bodyBytes, "  ", "  "); err == nil {
-			fmt.Fprintf(os.Stderr, "%s\n", prettyJSON.String())
+		if err := json.Indent(&prettyJSON, bodyBytes, "", "  "); err == nil {
+			tflog.Trace(c.ctx, "Request body (JSON):\n"+prettyJSON.String(), map[string]interface{}{"subsystem": "http"})
 		} else {
-			fmt.Fprintf(os.Stderr, "%s\n", string(bodyBytes))
+			tflog.Trace(c.ctx, "Request body", map[string]interface{}{
+				"subsystem": "http",
+				"body":      string(bodyBytes),
+			})
 		}
 	}
-	fmt.Fprintf(os.Stderr, "================================================================================\n\n")
 }
 
 func (c *EmporixClient) logResponse(resp *http.Response) {
-	fmt.Fprintf(os.Stderr, "\n[DEBUG] Emporix API Response:\n")
-	fmt.Fprintf(os.Stderr, "================================================================================\n")
-	fmt.Fprintf(os.Stderr, "Status: %s\n", resp.Status)
-	fmt.Fprintf(os.Stderr, "Headers:\n")
-	for key, values := range resp.Header {
-		for _, value := range values {
-			fmt.Fprintf(os.Stderr, "  %s: %s\n", key, value)
-		}
+	if c.ctx == nil {
+		return
 	}
 
-	// Read and log body, then restore it for further processing
+	// Log with http subsystem
+	tflog.Debug(c.ctx, "API Response",
+		map[string]interface{}{
+			"subsystem":   "http",
+			"status":      resp.Status,
+			"status_code": resp.StatusCode,
+		})
+
+	// Read and log body, then restore it
 	if resp.Body != nil {
 		bodyBytes, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err == nil && len(bodyBytes) > 0 {
-			fmt.Fprintf(os.Stderr, "Body:\n")
 			// Pretty print JSON
 			var prettyJSON bytes.Buffer
-			if err := json.Indent(&prettyJSON, bodyBytes, "  ", "  "); err == nil {
-				fmt.Fprintf(os.Stderr, "%s\n", prettyJSON.String())
+			if err := json.Indent(&prettyJSON, bodyBytes, "", "  "); err == nil {
+				tflog.Trace(c.ctx, "Response body (JSON):\n"+prettyJSON.String(), map[string]interface{}{"subsystem": "http"})
 			} else {
-				fmt.Fprintf(os.Stderr, "%s\n", string(bodyBytes))
+				tflog.Trace(c.ctx, "Response body", map[string]interface{}{
+					"subsystem": "http",
+					"body":      string(bodyBytes),
+				})
 			}
-			// Restore body for reading by caller
+			// Restore body
 			resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		}
 	}
-	fmt.Fprintf(os.Stderr, "================================================================================\n\n")
 }
 
 func (c *EmporixClient) CreateSite(site *SiteSettings) error {

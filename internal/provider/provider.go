@@ -107,6 +107,7 @@ func (p *EmporixProvider) Configure(ctx context.Context, req provider.ConfigureR
 		AccessToken: config.AccessToken.ValueString(),
 		ApiUrl:      config.ApiUrl.ValueString(),
 	}
+	client.SetContext(ctx)
 
 	resp.DataSourceData = client
 	resp.ResourceData = client
