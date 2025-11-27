@@ -197,3 +197,52 @@ func (c *EmporixClient) DeleteSite(siteCode string) error {
 
 	return nil
 }
+
+// PatchSiteMixins updates mixins and metadata using PATCH
+func (c *EmporixClient) PatchSiteMixins(siteCode string, mixins map[string]interface{}, metadata *Metadata) error {
+	path := fmt.Sprintf("/site/%s/sites/%s", strings.ToLower(c.Tenant), siteCode)
+	
+	patchData := make(map[string]interface{})
+	
+	if mixins != nil {
+		patchData["mixins"] = mixins
+	}
+	
+	// Only include metadata.mixins (schema URLs), NOT version
+	if metadata != nil && metadata.Mixins != nil && len(metadata.Mixins) > 0 {
+		patchData["metadata"] = map[string]interface{}{
+			"mixins": metadata.Mixins,
+		}
+	}
+
+	resp, err := c.doRequest("PATCH", path, patchData)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to patch site mixins: status %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
+}
+
+// DeleteSiteMixin deletes a specific mixin by name
+func (c *EmporixClient) DeleteSiteMixin(siteCode string, mixinName string) error {
+	path := fmt.Sprintf("/site/%s/sites/%s/mixins/%s", strings.ToLower(c.Tenant), siteCode, mixinName)
+	resp, err := c.doRequest("DELETE", path, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to delete mixin %s: status %d, body: %s", mixinName, resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
+}
+

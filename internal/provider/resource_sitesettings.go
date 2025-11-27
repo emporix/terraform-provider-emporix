@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -39,9 +40,11 @@ type SiteSettingsResourceModel struct {
 	ShipToCountries           types.List   `tfsdk:"ship_to_countries"`
 	TaxCalculationAddressType types.String `tfsdk:"tax_calculation_address_type"`
 	DecimalPoints             types.Int64  `tfsdk:"decimal_points"`
+	CartCalculationScale      types.Int64  `tfsdk:"cart_calculation_scale"`
 	HomeBase                  types.Object `tfsdk:"home_base"`
 	AssistedBuying            types.Object `tfsdk:"assisted_buying"`
-	Mixins                    types.Map    `tfsdk:"mixins"`
+	Metadata                  types.Object `tfsdk:"metadata"`
+	Mixins                    types.String `tfsdk:"mixins"`
 }
 
 func (r *SiteSettingsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -117,6 +120,12 @@ func (r *SiteSettingsResource) Schema(ctx context.Context, req resource.SchemaRe
 				Computed:    true,
 				Default:     int64default.StaticInt64(2),
 			},
+			"cart_calculation_scale": schema.Int64Attribute{
+				Description: "Scale for cart calculations. Must be zero or a positive value.",
+				Optional:    true,
+				Computed:    true,
+				Default:     int64default.StaticInt64(2),
+			},
 			"home_base": schema.SingleNestedAttribute{
 				Description: "Home base configuration for the site.",
 				Optional:    true,
@@ -166,9 +175,23 @@ func (r *SiteSettingsResource) Schema(ctx context.Context, req resource.SchemaRe
 					},
 				},
 			},
-			"mixins": schema.MapAttribute{
-				Description: "Custom mixins for extending site configuration.",
-				ElementType: types.StringType,
+			"metadata": schema.SingleNestedAttribute{
+				Description: "Metadata configuration including mixin URLs and version.",
+				Optional:    true,
+				Attributes: map[string]schema.Attribute{
+					"mixins": schema.MapAttribute{
+						Description: "Map of mixin names to their schema URLs.",
+						ElementType: types.StringType,
+						Optional:    true,
+					},
+					"version": schema.Int64Attribute{
+						Description: "Metadata version number.",
+						Optional:    true,
+					},
+				},
+			},
+			"mixins": schema.StringAttribute{
+				Description: "Custom mixins data as JSON string. Example: jsonencode({\"test1\" = {\"field1\" = \"value1\"}})",
 				Optional:    true,
 			},
 		},
@@ -215,7 +238,13 @@ func (r *SiteSettingsResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	// Create the site
+	// Step 1: Create site via POST (WITHOUT mixins/metadata)
+	// Save mixins/metadata for later, then clear them from the site object
+	mixinsToCreate := site.Mixins
+	metadataToCreate := site.Metadata
+	site.Mixins = nil
+	site.Metadata = nil
+
 	err := r.client.CreateSite(site)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -223,6 +252,18 @@ func (r *SiteSettingsResource) Create(ctx context.Context, req resource.CreateRe
 			fmt.Sprintf("Could not create site: %s", err.Error()),
 		)
 		return
+	}
+
+	// Step 2: Add mixins via PATCH (if any)
+	if mixinsToCreate != nil && len(mixinsToCreate) > 0 {
+		err := r.client.PatchSiteMixins(plan.Code.ValueString(), mixinsToCreate, metadataToCreate)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error adding mixins",
+				fmt.Sprintf("Could not add mixins to site: %s", err.Error()),
+			)
+			return
+		}
 	}
 
 	// Read back the created site to get computed values
@@ -329,8 +370,10 @@ func sameElements(a, b []string) bool {
 
 func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan SiteSettingsResourceModel
+	var state SiteSettingsResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -349,7 +392,13 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	// Update the site
+	// Step 1: Update regular fields via PUT (WITHOUT mixins/metadata)
+	// Save mixins/metadata for later, then clear them from the site object
+	mixinsToUpdate := site.Mixins
+	metadataToUpdate := site.Metadata
+	site.Mixins = nil
+	site.Metadata = nil
+
 	err := r.client.UpdateSite(plan.Code.ValueString(), site)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -357,6 +406,62 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 			fmt.Sprintf("Could not update site: %s", err.Error()),
 		)
 		return
+	}
+
+	// Step 2: Handle mixins separately via PATCH/DELETE
+	if !plan.Mixins.IsNull() || !state.Mixins.IsNull() {
+		// Parse current mixins from state
+		var oldMixins map[string]interface{}
+		if !state.Mixins.IsNull() && state.Mixins.ValueString() != "" {
+			if err := json.Unmarshal([]byte(state.Mixins.ValueString()), &oldMixins); err != nil {
+				resp.Diagnostics.AddError(
+					"Error parsing old mixins",
+					fmt.Sprintf("Could not parse old mixins JSON: %s", err.Error()),
+				)
+				return
+			}
+		}
+
+		// Parse new mixins from plan
+		var newMixins map[string]interface{}
+		if !plan.Mixins.IsNull() && plan.Mixins.ValueString() != "" {
+			if err := json.Unmarshal([]byte(plan.Mixins.ValueString()), &newMixins); err != nil {
+				resp.Diagnostics.AddError(
+					"Error parsing new mixins",
+					fmt.Sprintf("Could not parse new mixins JSON: %s", err.Error()),
+				)
+				return
+			}
+		}
+
+		// Detect deleted mixins (in old but not in new)
+		if oldMixins != nil {
+			for mixinName := range oldMixins {
+				if newMixins == nil || newMixins[mixinName] == nil {
+					// Mixin was deleted
+					err := r.client.DeleteSiteMixin(plan.Code.ValueString(), mixinName)
+					if err != nil {
+						resp.Diagnostics.AddError(
+							"Error deleting mixin",
+							fmt.Sprintf("Could not delete mixin %s: %s", mixinName, err.Error()),
+						)
+						return
+					}
+				}
+			}
+		}
+
+		// Update/add mixins via PATCH (only if we have mixins to update)
+		if mixinsToUpdate != nil && len(mixinsToUpdate) > 0 {
+			err := r.client.PatchSiteMixins(plan.Code.ValueString(), mixinsToUpdate, metadataToUpdate)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Error updating mixins",
+					fmt.Sprintf("Could not update mixins: %s", err.Error()),
+				)
+				return
+			}
+		}
 	}
 
 	// Read back the updated site

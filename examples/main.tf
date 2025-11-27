@@ -123,6 +123,41 @@ resource "emporix_sitesettings" "uk_site" {
   }
 }
 
+# Example 4: Advanced site with mixins and metadata
+resource "emporix_sitesettings" "advanced_site" {
+  code             = "advanced"
+  name             = "Advanced Site with Mixins"
+  active           = true
+  default          = false
+  default_language = "en"
+  languages        = ["en"]
+  currency         = "USD"
+
+  cart_calculation_scale = 2
+
+  # Metadata contains mixin schema URLs and version
+  metadata = {
+    mixins = {
+      test3 = "https://res.cloudinary.com/saas-ag/raw/upload/schemata2/ppmdev/test3_v1.json"
+    }
+  }
+
+  # Mixins contains the actual mixin data as JSON
+  mixins = jsonencode({
+    test3 = {
+      field3    = "value3"
+    }
+  })
+
+  home_base = {
+    address = {
+      country = "US"
+      city    = "New York"
+      zip_code = "AAA"
+    }
+  }
+}
+
 # Outputs
 output "us_site_code" {
   description = "US site code"

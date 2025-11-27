@@ -1,22 +1,23 @@
 package provider
 
 type SiteSettings struct {
-	Code                    string              `json:"code,omitempty"`
-	Name                    string              `json:"name"`
-	Active                  bool                `json:"active"`
-	Default                 bool                `json:"default"`
-	IncludesTax             *bool               `json:"includesTax,omitempty"`
-	DefaultLanguage         string              `json:"defaultLanguage"`
-	Languages               []string            `json:"languages"`
-	Currency                string              `json:"currency"`
-	AvailableCurrencies     []string            `json:"availableCurrencies,omitempty"`
-	ShipToCountries         []string            `json:"shipToCountries,omitempty"`
-	TaxCalculationAddressType string            `json:"taxCalculationAddressType,omitempty"`
-	DecimalPoints           *int64              `json:"decimalPoints,omitempty"`
-	HomeBase                *HomeBase           `json:"homeBase,omitempty"`
-	AssistedBuying          *AssistedBuying     `json:"assistedBuying,omitempty"`
-	Mixins                  map[string]string   `json:"mixins,omitempty"`
-	Metadata                *Metadata           `json:"metadata,omitempty"`
+	Code                      string                 `json:"code,omitempty"`
+	Name                      string                 `json:"name"`
+	Active                    bool                   `json:"active"`
+	Default                   bool                   `json:"default"`
+	IncludesTax               *bool                  `json:"includesTax,omitempty"`
+	DefaultLanguage           string                 `json:"defaultLanguage"`
+	Languages                 []string               `json:"languages"`
+	Currency                  string                 `json:"currency"`
+	AvailableCurrencies       []string               `json:"availableCurrencies,omitempty"`
+	ShipToCountries           []string               `json:"shipToCountries,omitempty"`
+	TaxCalculationAddressType string                 `json:"taxCalculationAddressType,omitempty"`
+	DecimalPoints             *int64                 `json:"decimalPoints,omitempty"`
+	CartCalculationScale      *int64                 `json:"cartCalculationScale,omitempty"`
+	HomeBase                  *HomeBase              `json:"homeBase,omitempty"`
+	AssistedBuying            *AssistedBuying        `json:"assistedBuying,omitempty"`
+	Mixins                    map[string]interface{} `json:"mixins,omitempty"`
+	Metadata                  *Metadata              `json:"metadata,omitempty"`
 }
 
 type HomeBase struct {

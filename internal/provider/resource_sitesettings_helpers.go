@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -54,6 +55,12 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 	if !model.DecimalPoints.IsNull() {
 		val := model.DecimalPoints.ValueInt64()
 		site.DecimalPoints = &val
+	}
+
+	// Cart Calculation Scale
+	if !model.CartCalculationScale.IsNull() {
+		val := model.CartCalculationScale.ValueInt64()
+		site.CartCalculationScale = &val
 	}
 
 	// Home Base
@@ -115,11 +122,42 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 		}
 	}
 
-	// Mixins
-	if !model.Mixins.IsNull() {
-		var mixins map[string]string
-		diags.Append(model.Mixins.ElementsAs(ctx, &mixins, false)...)
-		site.Mixins = mixins
+	// Metadata
+	if !model.Metadata.IsNull() {
+		metadataAttrs := model.Metadata.Attributes()
+		
+		if len(metadataAttrs) > 0 {
+			site.Metadata = &Metadata{}
+			
+			// Mixins URLs map
+			if mixinsMapObj, ok := metadataAttrs["mixins"].(types.Map); ok && !mixinsMapObj.IsNull() {
+				var mixinsMap map[string]string
+				diagsTemp := mixinsMapObj.ElementsAs(ctx, &mixinsMap, false)
+				diags.Append(diagsTemp...)
+				if len(mixinsMap) > 0 {
+					site.Metadata.Mixins = mixinsMap
+				}
+			}
+			
+			// Version
+			if v, ok := metadataAttrs["version"].(types.Int64); ok && !v.IsNull() {
+				version := int(v.ValueInt64())
+				site.Metadata.Version = version
+			}
+		}
+	}
+
+	// Mixins (JSON string)
+	if !model.Mixins.IsNull() && model.Mixins.ValueString() != "" {
+		var mixinsData map[string]interface{}
+		if err := json.Unmarshal([]byte(model.Mixins.ValueString()), &mixinsData); err != nil {
+			diags.AddError(
+				"Invalid Mixins JSON",
+				"Failed to parse mixins JSON: "+err.Error(),
+			)
+		} else {
+			site.Mixins = mixinsData
+		}
 	}
 
 	return site, diags
@@ -147,21 +185,33 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 		model.Languages = languagesList
 	}
 
-	// Available Currencies
-	if site.AvailableCurrencies != nil {
-		currenciesList, d := types.ListValueFrom(ctx, types.StringType, site.AvailableCurrencies)
-		diags.Append(d...)
-		model.AvailableCurrencies = currenciesList
+	// Available Currencies - API may return this even if not set, preserve from plan
+	if !previousModel.AvailableCurrencies.IsNull() {
+		// User specified available_currencies, use API value
+		if site.AvailableCurrencies != nil {
+			currenciesList, d := types.ListValueFrom(ctx, types.StringType, site.AvailableCurrencies)
+			diags.Append(d...)
+			model.AvailableCurrencies = currenciesList
+		} else {
+			model.AvailableCurrencies = types.ListNull(types.StringType)
+		}
 	} else {
+		// User didn't specify available_currencies, keep it null
 		model.AvailableCurrencies = types.ListNull(types.StringType)
 	}
 
-	// Ship To Countries
-	if site.ShipToCountries != nil {
-		countriesList, d := types.ListValueFrom(ctx, types.StringType, site.ShipToCountries)
-		diags.Append(d...)
-		model.ShipToCountries = countriesList
+	// Ship To Countries - API may return this even if not set, preserve from plan
+	if !previousModel.ShipToCountries.IsNull() {
+		// User specified ship_to_countries, use API value
+		if site.ShipToCountries != nil {
+			countriesList, d := types.ListValueFrom(ctx, types.StringType, site.ShipToCountries)
+			diags.Append(d...)
+			model.ShipToCountries = countriesList
+		} else {
+			model.ShipToCountries = types.ListNull(types.StringType)
+		}
 	} else {
+		// User didn't specify ship_to_countries, keep it null
 		model.ShipToCountries = types.ListNull(types.StringType)
 	}
 
@@ -179,6 +229,13 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 		model.DecimalPoints = types.Int64Value(*site.DecimalPoints)
 	} else {
 		model.DecimalPoints = types.Int64Value(2)
+	}
+
+	// Cart Calculation Scale
+	if site.CartCalculationScale != nil {
+		model.CartCalculationScale = types.Int64Value(*site.CartCalculationScale)
+	} else {
+		model.CartCalculationScale = types.Int64Value(2)
 	}
 
 	// Home Base
@@ -292,13 +349,76 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 		})
 	}
 
-	// Mixins
-	if site.Mixins != nil && len(site.Mixins) > 0 {
-		mixinsMap, d := types.MapValueFrom(ctx, types.StringType, site.Mixins)
-		diags.Append(d...)
-		model.Mixins = mixinsMap
+	// Metadata - API may return this even if not set, so preserve from previous state/plan
+	if !previousModel.Metadata.IsNull() {
+		// User specified metadata in their config
+		previousMetadataAttrs := previousModel.Metadata.Attributes()
+		
+		if site.Metadata != nil && (len(site.Metadata.Mixins) > 0 || site.Metadata.Version != 0) {
+			metadataAttrs := make(map[string]attr.Value)
+			
+			// Mixins URLs map
+			if site.Metadata.Mixins != nil && len(site.Metadata.Mixins) > 0 {
+				mixinsMap, d := types.MapValueFrom(ctx, types.StringType, site.Metadata.Mixins)
+				diags.Append(d...)
+				metadataAttrs["mixins"] = mixinsMap
+			} else {
+				metadataAttrs["mixins"] = types.MapNull(types.StringType)
+			}
+			
+			// Version - only include if user specified it in their config
+			if versionVal, ok := previousMetadataAttrs["version"].(types.Int64); ok && !versionVal.IsNull() {
+				// User specified version, use API value
+				if site.Metadata.Version != 0 {
+					metadataAttrs["version"] = types.Int64Value(int64(site.Metadata.Version))
+				} else {
+					metadataAttrs["version"] = types.Int64Null()
+				}
+			} else {
+				// User didn't specify version, keep it null
+				metadataAttrs["version"] = types.Int64Null()
+			}
+			
+			metadataObj, d := types.ObjectValue(map[string]attr.Type{
+				"mixins":  types.MapType{ElemType: types.StringType},
+				"version": types.Int64Type,
+			}, metadataAttrs)
+			diags.Append(d...)
+			model.Metadata = metadataObj
+		} else {
+			model.Metadata = types.ObjectNull(map[string]attr.Type{
+				"mixins":  types.MapType{ElemType: types.StringType},
+				"version": types.Int64Type,
+			})
+		}
 	} else {
-		model.Mixins = types.MapNull(types.StringType)
+		// User didn't specify metadata, keep it null even if API returned it
+		model.Metadata = types.ObjectNull(map[string]attr.Type{
+			"mixins":  types.MapType{ElemType: types.StringType},
+			"version": types.Int64Type,
+		})
+	}
+
+	// Mixins (convert to JSON string) - API may return this even if not set, preserve from plan
+	if !previousModel.Mixins.IsNull() && previousModel.Mixins.ValueString() != "" {
+		// User specified mixins in their config, use what API returned
+		if site.Mixins != nil && len(site.Mixins) > 0 {
+			mixinsJSON, err := json.Marshal(site.Mixins)
+			if err != nil {
+				diags.AddError(
+					"Failed to Marshal Mixins",
+					"Could not convert mixins to JSON: "+err.Error(),
+				)
+				model.Mixins = types.StringNull()
+			} else {
+				model.Mixins = types.StringValue(string(mixinsJSON))
+			}
+		} else {
+			model.Mixins = types.StringNull()
+		}
+	} else {
+		// User didn't specify mixins, keep it null even if API returned it
+		model.Mixins = types.StringNull()
 	}
 }
 
