@@ -29,7 +29,8 @@ terraform {
 # }
 provider "emporix" {
   tenant       = "tenant"     # Or use EMPORIX_TENANT env var
-  access_token = "xxx" # Or use EMPORIX_ACCESS_TOKEN env var
+  client_id = "xxx"
+  client_secret = "xxx"
   api_url      = "https://api-develop.emporix.io" # Optional, defaults to https://api.emporix.io
 }
 

@@ -346,25 +346,25 @@ func sameElements(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	
+
 	counts := make(map[string]int)
 	for _, v := range a {
 		counts[v]++
 	}
-	
+
 	for _, v := range b {
 		counts[v]--
 		if counts[v] < 0 {
 			return false
 		}
 	}
-	
+
 	for _, count := range counts {
 		if count != 0 {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -385,31 +385,49 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 		resp.Diagnostics.Append(plan.ShipToCountries.ElementsAs(ctx, &originalShipToCountries, false)...)
 	}
 
-	// Convert Terraform model to API model
-	site, diags := r.terraformToApi(ctx, &plan)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
+	// Check if regular fields changed (anything except mixins/metadata)
+	regularFieldsChanged := !plan.Name.Equal(state.Name) ||
+		!plan.Active.Equal(state.Active) ||
+		!plan.Default.Equal(state.Default) ||
+		!plan.IncludesTax.Equal(state.IncludesTax) ||
+		!plan.DefaultLanguage.Equal(state.DefaultLanguage) ||
+		!plan.Languages.Equal(state.Languages) ||
+		!plan.Currency.Equal(state.Currency) ||
+		!plan.AvailableCurrencies.Equal(state.AvailableCurrencies) ||
+		!plan.ShipToCountries.Equal(state.ShipToCountries) ||
+		!plan.TaxCalculationAddressType.Equal(state.TaxCalculationAddressType) ||
+		!plan.DecimalPoints.Equal(state.DecimalPoints) ||
+		!plan.CartCalculationScale.Equal(state.CartCalculationScale) ||
+		!plan.HomeBase.Equal(state.HomeBase) ||
+		!plan.AssistedBuying.Equal(state.AssistedBuying)
+
+	// Only call PUT if regular fields changed
+	if regularFieldsChanged {
+		// Convert Terraform model to API model
+		site, diags := r.terraformToApi(ctx, &plan)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		// Clear mixins/metadata from site object (they're handled separately)
+		site.Mixins = nil
+		site.Metadata = nil
+
+		err := r.client.UpdateSite(plan.Code.ValueString(), site)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error updating site",
+				fmt.Sprintf("Could not update site: %s", err.Error()),
+			)
+			return
+		}
 	}
 
-	// Step 1: Update regular fields via PUT (WITHOUT mixins/metadata)
-	// Save mixins/metadata for later, then clear them from the site object
-	mixinsToUpdate := site.Mixins
-	metadataToUpdate := site.Metadata
-	site.Mixins = nil
-	site.Metadata = nil
+	// Handle mixins separately via PATCH/DELETE (even if regular fields didn't change)
+	mixinsChanged := !plan.Mixins.Equal(state.Mixins) || !plan.Metadata.Equal(state.Metadata)
 
-	err := r.client.UpdateSite(plan.Code.ValueString(), site)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error updating site",
-			fmt.Sprintf("Could not update site: %s", err.Error()),
-		)
-		return
-	}
-
-	// Step 2: Handle mixins separately via PATCH/DELETE
-	if !plan.Mixins.IsNull() || !state.Mixins.IsNull() {
+	if mixinsChanged {
 		// Parse current mixins from state
 		var oldMixins map[string]interface{}
 		if !state.Mixins.IsNull() && state.Mixins.ValueString() != "" {
@@ -452,8 +470,24 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 		}
 
 		// Update/add mixins via PATCH (only if we have mixins to update)
-		if mixinsToUpdate != nil && len(mixinsToUpdate) > 0 {
-			err := r.client.PatchSiteMixins(plan.Code.ValueString(), mixinsToUpdate, metadataToUpdate)
+		if newMixins != nil && len(newMixins) > 0 {
+			// Get metadata from plan
+			var metadata *Metadata
+			if !plan.Metadata.IsNull() {
+				metadataAttrs := plan.Metadata.Attributes()
+				metadata = &Metadata{}
+
+				if mixinsMapObj, ok := metadataAttrs["mixins"].(types.Map); ok && !mixinsMapObj.IsNull() {
+					var mixinsMap map[string]string
+					diagsTemp := mixinsMapObj.ElementsAs(ctx, &mixinsMap, false)
+					resp.Diagnostics.Append(diagsTemp...)
+					if len(mixinsMap) > 0 {
+						metadata.Mixins = mixinsMap
+					}
+				}
+			}
+
+			err := r.client.PatchSiteMixins(plan.Code.ValueString(), newMixins, metadata)
 			if err != nil {
 				resp.Diagnostics.AddError(
 					"Error updating mixins",
