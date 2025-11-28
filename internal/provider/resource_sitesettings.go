@@ -176,16 +176,12 @@ func (r *SiteSettingsResource) Schema(ctx context.Context, req resource.SchemaRe
 				},
 			},
 			"metadata": schema.SingleNestedAttribute{
-				Description: "Metadata configuration including mixin URLs and version.",
+				Description: "Metadata configuration with mixin schema URLs (version is managed automatically by the API).",
 				Optional:    true,
 				Attributes: map[string]schema.Attribute{
 					"mixins": schema.MapAttribute{
 						Description: "Map of mixin names to their schema URLs.",
 						ElementType: types.StringType,
-						Optional:    true,
-					},
-					"version": schema.Int64Attribute{
-						Description: "Metadata version number.",
 						Optional:    true,
 					},
 				},
@@ -276,8 +272,8 @@ func (r *SiteSettingsResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	// Update state with computed values
-	r.apiToTerraform(ctx, createdSite, &plan, &plan, &resp.Diagnostics)
+	// Update state with computed values (preserve plan values to prevent consistency errors)
+	r.apiToTerraform(ctx, createdSite, &plan, &plan, &resp.Diagnostics, true)
 
 	// Restore the original order for ship_to_countries if they contain the same elements
 	if len(originalShipToCountries) > 0 && createdSite.ShipToCountries != nil {
@@ -322,7 +318,7 @@ func (r *SiteSettingsResource) Read(ctx context.Context, req resource.ReadReques
 	}
 	originalTaxCalculationType = state.TaxCalculationAddressType
 
-	r.apiToTerraform(ctx, site, &state, &state, &resp.Diagnostics)
+	r.apiToTerraform(ctx, site, &state, &state, &resp.Diagnostics, false)
 
 	// Restore the original order for ship_to_countries if they contain the same elements
 	if len(originalShipToCountries) > 0 && site.ShipToCountries != nil {
@@ -401,26 +397,25 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 		!plan.HomeBase.Equal(state.HomeBase) ||
 		!plan.AssistedBuying.Equal(state.AssistedBuying)
 
-	// Only call PUT if regular fields changed
+	// Only call PATCH if regular fields changed
 	if regularFieldsChanged {
-		// Convert Terraform model to API model
-		site, diags := r.terraformToApi(ctx, &plan)
+		// Build patch data with only changed fields
+		patchData, diags := r.buildPatchData(ctx, &plan, &state)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
 		}
 
-		// Clear mixins/metadata from site object (they're handled separately)
-		site.Mixins = nil
-		site.Metadata = nil
-
-		err := r.client.UpdateSite(plan.Code.ValueString(), site)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error updating site",
-				fmt.Sprintf("Could not update site: %s", err.Error()),
-			)
-			return
+		// Only send PATCH if there are actually fields to update
+		if len(patchData) > 0 {
+			err := r.client.UpdateSite(plan.Code.ValueString(), patchData)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Error updating site",
+					fmt.Sprintf("Could not update site: %s", err.Error()),
+				)
+				return
+			}
 		}
 	}
 
@@ -508,7 +503,7 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	r.apiToTerraform(ctx, updatedSite, &plan, &plan, &resp.Diagnostics)
+	r.apiToTerraform(ctx, updatedSite, &plan, &plan, &resp.Diagnostics, true)
 
 	// Restore the original order for ship_to_countries if they contain the same elements
 	if len(originalShipToCountries) > 0 && updatedSite.ShipToCountries != nil {

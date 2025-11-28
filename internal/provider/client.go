@@ -166,9 +166,9 @@ func (c *EmporixClient) GetSite(siteCode string) (*SiteSettings, error) {
 	return &site, nil
 }
 
-func (c *EmporixClient) UpdateSite(siteCode string, site *SiteSettings) error {
+func (c *EmporixClient) UpdateSite(siteCode string, patchData map[string]interface{}) error {
 	path := fmt.Sprintf("/site/%s/sites/%s", strings.ToLower(c.Tenant), siteCode)
-	resp, err := c.doRequest("PUT", path, site)
+	resp, err := c.doRequest("PATCH", path, patchData)
 	if err != nil {
 		return err
 	}

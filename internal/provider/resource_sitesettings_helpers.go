@@ -129,7 +129,7 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 		if len(metadataAttrs) > 0 {
 			site.Metadata = &Metadata{}
 			
-			// Mixins URLs map
+			// Mixins URLs map (version is managed by API)
 			if mixinsMapObj, ok := metadataAttrs["mixins"].(types.Map); ok && !mixinsMapObj.IsNull() {
 				var mixinsMap map[string]string
 				diagsTemp := mixinsMapObj.ElementsAs(ctx, &mixinsMap, false)
@@ -137,12 +137,6 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 				if len(mixinsMap) > 0 {
 					site.Metadata.Mixins = mixinsMap
 				}
-			}
-			
-			// Version
-			if v, ok := metadataAttrs["version"].(types.Int64); ok && !v.IsNull() {
-				version := int(v.ValueInt64())
-				site.Metadata.Version = version
 			}
 		}
 	}
@@ -163,7 +157,183 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 	return site, diags
 }
 
-func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSettings, model *SiteSettingsResourceModel, previousModel *SiteSettingsResourceModel, diags *diag.Diagnostics) {
+// buildPatchData creates a map with only the fields that changed between state and plan
+func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSettingsResourceModel, state *SiteSettingsResourceModel) (map[string]interface{}, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	patchData := make(map[string]interface{})
+
+	// Name
+	if !plan.Name.Equal(state.Name) {
+		patchData["name"] = plan.Name.ValueString()
+	}
+
+	// Active
+	if !plan.Active.Equal(state.Active) {
+		patchData["active"] = plan.Active.ValueBool()
+	}
+
+	// Default
+	if !plan.Default.Equal(state.Default) {
+		patchData["default"] = plan.Default.ValueBool()
+	}
+
+	// IncludesTax
+	if !plan.IncludesTax.Equal(state.IncludesTax) {
+		if !plan.IncludesTax.IsNull() {
+			patchData["includesTax"] = plan.IncludesTax.ValueBool()
+		} else {
+			patchData["includesTax"] = nil
+		}
+	}
+
+	// DefaultLanguage
+	if !plan.DefaultLanguage.Equal(state.DefaultLanguage) {
+		patchData["defaultLanguage"] = plan.DefaultLanguage.ValueString()
+	}
+
+	// Languages
+	if !plan.Languages.Equal(state.Languages) {
+		var languages []string
+		diags.Append(plan.Languages.ElementsAs(ctx, &languages, false)...)
+		patchData["languages"] = languages
+	}
+
+	// Currency
+	if !plan.Currency.Equal(state.Currency) {
+		patchData["currency"] = plan.Currency.ValueString()
+	}
+
+	// AvailableCurrencies
+	if !plan.AvailableCurrencies.Equal(state.AvailableCurrencies) {
+		if !plan.AvailableCurrencies.IsNull() {
+			var availableCurrencies []string
+			diags.Append(plan.AvailableCurrencies.ElementsAs(ctx, &availableCurrencies, false)...)
+			patchData["availableCurrencies"] = availableCurrencies
+		} else {
+			patchData["availableCurrencies"] = nil
+		}
+	}
+
+	// ShipToCountries
+	if !plan.ShipToCountries.Equal(state.ShipToCountries) {
+		if !plan.ShipToCountries.IsNull() {
+			var shipToCountries []string
+			diags.Append(plan.ShipToCountries.ElementsAs(ctx, &shipToCountries, false)...)
+			patchData["shipToCountries"] = shipToCountries
+		} else {
+			patchData["shipToCountries"] = nil
+		}
+	}
+
+	// TaxCalculationAddressType
+	if !plan.TaxCalculationAddressType.Equal(state.TaxCalculationAddressType) {
+		if !plan.TaxCalculationAddressType.IsNull() {
+			patchData["taxCalculationAddressType"] = plan.TaxCalculationAddressType.ValueString()
+		} else {
+			patchData["taxCalculationAddressType"] = nil
+		}
+	}
+
+	// DecimalPoints
+	if !plan.DecimalPoints.Equal(state.DecimalPoints) {
+		if !plan.DecimalPoints.IsNull() {
+			patchData["decimalPoints"] = plan.DecimalPoints.ValueInt64()
+		} else {
+			patchData["decimalPoints"] = nil
+		}
+	}
+
+	// CartCalculationScale
+	if !plan.CartCalculationScale.Equal(state.CartCalculationScale) {
+		if !plan.CartCalculationScale.IsNull() {
+			patchData["cartCalculationScale"] = plan.CartCalculationScale.ValueInt64()
+		} else {
+			patchData["cartCalculationScale"] = nil
+		}
+	}
+
+	// HomeBase
+	if !plan.HomeBase.Equal(state.HomeBase) {
+		if !plan.HomeBase.IsNull() {
+			homeBaseAttrs := plan.HomeBase.Attributes()
+			homeBase := make(map[string]interface{})
+			
+			// Address
+			if addressObj, ok := homeBaseAttrs["address"].(types.Object); ok && !addressObj.IsNull() {
+				addressAttrs := addressObj.Attributes()
+				address := make(map[string]interface{})
+				
+				if v, ok := addressAttrs["street"].(types.String); ok && !v.IsNull() {
+					address["street"] = v.ValueString()
+				}
+				if v, ok := addressAttrs["street_number"].(types.String); ok && !v.IsNull() {
+					address["streetNumber"] = v.ValueString()
+				}
+				if v, ok := addressAttrs["zip_code"].(types.String); ok && !v.IsNull() {
+					address["zipCode"] = v.ValueString()
+				}
+				if v, ok := addressAttrs["city"].(types.String); ok && !v.IsNull() {
+					address["city"] = v.ValueString()
+				}
+				if v, ok := addressAttrs["country"].(types.String); ok && !v.IsNull() {
+					address["country"] = v.ValueString()
+				}
+				if v, ok := addressAttrs["state"].(types.String); ok && !v.IsNull() {
+					address["state"] = v.ValueString()
+				}
+				
+				if len(address) > 0 {
+					homeBase["address"] = address
+				}
+			}
+			
+			// Location
+			if locationObj, ok := homeBaseAttrs["location"].(types.Object); ok && !locationObj.IsNull() {
+				locationAttrs := locationObj.Attributes()
+				location := make(map[string]interface{})
+				
+				if v, ok := locationAttrs["latitude"].(types.Float64); ok && !v.IsNull() {
+					location["latitude"] = v.ValueFloat64()
+				}
+				if v, ok := locationAttrs["longitude"].(types.Float64); ok && !v.IsNull() {
+					location["longitude"] = v.ValueFloat64()
+				}
+				
+				if len(location) > 0 {
+					homeBase["location"] = location
+				}
+			}
+			
+			if len(homeBase) > 0 {
+				patchData["homeBase"] = homeBase
+			}
+		} else {
+			patchData["homeBase"] = nil
+		}
+	}
+
+	// AssistedBuying
+	if !plan.AssistedBuying.Equal(state.AssistedBuying) {
+		if !plan.AssistedBuying.IsNull() {
+			assistedBuyingAttrs := plan.AssistedBuying.Attributes()
+			assistedBuying := make(map[string]interface{})
+			
+			if v, ok := assistedBuyingAttrs["storefront_url"].(types.String); ok && !v.IsNull() {
+				assistedBuying["storefrontUrl"] = v.ValueString()
+			}
+			
+			if len(assistedBuying) > 0 {
+				patchData["assistedBuying"] = assistedBuying
+			}
+		} else {
+			patchData["assistedBuying"] = nil
+		}
+	}
+
+	return patchData, diags
+}
+
+func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSettings, model *SiteSettingsResourceModel, previousModel *SiteSettingsResourceModel, diags *diag.Diagnostics, preservePlanValues bool) {
 	model.Code = types.StringValue(site.Code)
 	model.Name = types.StringValue(site.Name)
 	model.Active = types.BoolValue(site.Active)
@@ -185,9 +355,11 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 		model.Languages = languagesList
 	}
 
-	// Available Currencies - API may return this even if not set, preserve from plan
-	if !previousModel.AvailableCurrencies.IsNull() {
-		// User specified available_currencies, use API value
+	// Available Currencies - API may return this even if not set
+	// During Read: show actual values (detect drift)
+	// During Create/Update: preserve plan values (prevent consistency errors)
+	if !preservePlanValues || !previousModel.AvailableCurrencies.IsNull() {
+		// Either in Read mode, or user specified available_currencies
 		if site.AvailableCurrencies != nil {
 			currenciesList, d := types.ListValueFrom(ctx, types.StringType, site.AvailableCurrencies)
 			diags.Append(d...)
@@ -196,13 +368,15 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 			model.AvailableCurrencies = types.ListNull(types.StringType)
 		}
 	} else {
-		// User didn't specify available_currencies, keep it null
+		// In Create/Update mode and user didn't specify, keep null
 		model.AvailableCurrencies = types.ListNull(types.StringType)
 	}
 
-	// Ship To Countries - API may return this even if not set, preserve from plan
-	if !previousModel.ShipToCountries.IsNull() {
-		// User specified ship_to_countries, use API value
+	// Ship To Countries - API may return this even if not set
+	// During Read: show actual values (detect drift)
+	// During Create/Update: preserve plan values (prevent consistency errors)
+	if !preservePlanValues || !previousModel.ShipToCountries.IsNull() {
+		// Either in Read mode, or user specified ship_to_countries
 		if site.ShipToCountries != nil {
 			countriesList, d := types.ListValueFrom(ctx, types.StringType, site.ShipToCountries)
 			diags.Append(d...)
@@ -211,7 +385,7 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 			model.ShipToCountries = types.ListNull(types.StringType)
 		}
 	} else {
-		// User didn't specify ship_to_countries, keep it null
+		// In Create/Update mode and user didn't specify, keep null
 		model.ShipToCountries = types.ListNull(types.StringType)
 	}
 
@@ -349,15 +523,15 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 		})
 	}
 
-	// Metadata - API may return this even if not set, so preserve from previous state/plan
-	if !previousModel.Metadata.IsNull() {
-		// User specified metadata in their config
-		previousMetadataAttrs := previousModel.Metadata.Attributes()
-		
-		if site.Metadata != nil && (len(site.Metadata.Mixins) > 0 || site.Metadata.Version != 0) {
+	// Metadata - API may return this even if not set (version is managed by API, not exposed to users)
+	// During Read: show actual values (detect drift)
+	// During Create/Update: preserve plan values (prevent consistency errors)
+	if !preservePlanValues || !previousModel.Metadata.IsNull() {
+		// Either in Read mode, or user specified metadata
+		if site.Metadata != nil && len(site.Metadata.Mixins) > 0 {
 			metadataAttrs := make(map[string]attr.Value)
 			
-			// Mixins URLs map
+			// Mixins URLs map (only field we expose to users)
 			if site.Metadata.Mixins != nil && len(site.Metadata.Mixins) > 0 {
 				mixinsMap, d := types.MapValueFrom(ctx, types.StringType, site.Metadata.Mixins)
 				diags.Append(d...)
@@ -366,42 +540,28 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 				metadataAttrs["mixins"] = types.MapNull(types.StringType)
 			}
 			
-			// Version - only include if user specified it in their config
-			if versionVal, ok := previousMetadataAttrs["version"].(types.Int64); ok && !versionVal.IsNull() {
-				// User specified version, use API value
-				if site.Metadata.Version != 0 {
-					metadataAttrs["version"] = types.Int64Value(int64(site.Metadata.Version))
-				} else {
-					metadataAttrs["version"] = types.Int64Null()
-				}
-			} else {
-				// User didn't specify version, keep it null
-				metadataAttrs["version"] = types.Int64Null()
-			}
-			
 			metadataObj, d := types.ObjectValue(map[string]attr.Type{
-				"mixins":  types.MapType{ElemType: types.StringType},
-				"version": types.Int64Type,
+				"mixins": types.MapType{ElemType: types.StringType},
 			}, metadataAttrs)
 			diags.Append(d...)
 			model.Metadata = metadataObj
 		} else {
 			model.Metadata = types.ObjectNull(map[string]attr.Type{
-				"mixins":  types.MapType{ElemType: types.StringType},
-				"version": types.Int64Type,
+				"mixins": types.MapType{ElemType: types.StringType},
 			})
 		}
 	} else {
-		// User didn't specify metadata, keep it null even if API returned it
+		// In Create/Update mode and user didn't specify metadata, keep null
 		model.Metadata = types.ObjectNull(map[string]attr.Type{
-			"mixins":  types.MapType{ElemType: types.StringType},
-			"version": types.Int64Type,
+			"mixins": types.MapType{ElemType: types.StringType},
 		})
 	}
 
-	// Mixins (convert to JSON string) - API may return this even if not set, preserve from plan
-	if !previousModel.Mixins.IsNull() && previousModel.Mixins.ValueString() != "" {
-		// User specified mixins in their config, use what API returned
+	// Mixins (convert to JSON string) - API may return this even if not set
+	// During Read: show actual values (detect drift)
+	// During Create/Update: preserve plan values (prevent consistency errors)
+	if !preservePlanValues || (!previousModel.Mixins.IsNull() && previousModel.Mixins.ValueString() != "") {
+		// Either in Read mode, or user specified mixins
 		if site.Mixins != nil && len(site.Mixins) > 0 {
 			mixinsJSON, err := json.Marshal(site.Mixins)
 			if err != nil {
@@ -417,7 +577,7 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 			model.Mixins = types.StringNull()
 		}
 	} else {
-		// User didn't specify mixins, keep it null even if API returned it
+		// In Create/Update mode and user didn't specify mixins, keep null
 		model.Mixins = types.StringNull()
 	}
 }
