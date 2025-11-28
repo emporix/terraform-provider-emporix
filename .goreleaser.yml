@@ -28,8 +28,14 @@ builds:
     binary: '{{ .ProjectName }}_v{{ .Version }}'
 
 archives:
-  - format: zip
-    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+  - name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    format_overrides:
+      - goos: windows
+        format: zip
+      - goos: darwin
+        format: zip
+      - goos: linux
+        format: zip
     files:
       - LICENSE
       - README.md
