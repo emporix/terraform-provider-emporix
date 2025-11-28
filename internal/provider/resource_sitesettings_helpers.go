@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -66,14 +67,14 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 	// Home Base
 	if !model.HomeBase.IsNull() {
 		homeBaseAttrs := model.HomeBase.Attributes()
-		
+
 		if len(homeBaseAttrs) > 0 {
 			site.HomeBase = &HomeBase{}
-			
+
 			// Address
 			if addressObj, ok := homeBaseAttrs["address"].(types.Object); ok && !addressObj.IsNull() {
 				addressAttrs := addressObj.Attributes()
-				
+
 				site.HomeBase.Address = &Address{}
 				if v, ok := addressAttrs["street"].(types.String); ok && !v.IsNull() {
 					site.HomeBase.Address.Street = v.ValueString()
@@ -94,11 +95,11 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 					site.HomeBase.Address.State = v.ValueString()
 				}
 			}
-			
+
 			// Location
 			if locationObj, ok := homeBaseAttrs["location"].(types.Object); ok && !locationObj.IsNull() {
 				locationAttrs := locationObj.Attributes()
-				
+
 				site.HomeBase.Location = &Location{}
 				if v, ok := locationAttrs["latitude"].(types.Float64); ok && !v.IsNull() {
 					site.HomeBase.Location.Latitude = v.ValueFloat64()
@@ -113,7 +114,7 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 	// Assisted Buying
 	if !model.AssistedBuying.IsNull() {
 		assistedBuyingAttrs := model.AssistedBuying.Attributes()
-		
+
 		if len(assistedBuyingAttrs) > 0 {
 			site.AssistedBuying = &AssistedBuying{}
 			if v, ok := assistedBuyingAttrs["storefront_url"].(types.String); ok && !v.IsNull() {
@@ -122,35 +123,37 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 		}
 	}
 
-	// Metadata
-	if !model.Metadata.IsNull() {
-		metadataAttrs := model.Metadata.Attributes()
-		
-		if len(metadataAttrs) > 0 {
-			site.Metadata = &Metadata{}
-			
-			// Mixins URLs map (version is managed by API)
-			if mixinsMapObj, ok := metadataAttrs["mixins"].(types.Map); ok && !mixinsMapObj.IsNull() {
-				var mixinsMap map[string]string
-				diagsTemp := mixinsMapObj.ElementsAs(ctx, &mixinsMap, false)
-				diags.Append(diagsTemp...)
-				if len(mixinsMap) > 0 {
-					site.Metadata.Mixins = mixinsMap
+	// Mixins - convert from list of objects to API format
+	if !model.Mixins.IsNull() && !model.Mixins.IsUnknown() {
+		var mixinsList []MixinModel
+		diagsTemp := model.Mixins.ElementsAs(ctx, &mixinsList, false)
+		diags.Append(diagsTemp...)
+
+		if len(mixinsList) > 0 {
+			site.Metadata = &Metadata{
+				Mixins: make(map[string]string),
+			}
+			site.Mixins = make(map[string]interface{})
+
+			for _, mixin := range mixinsList {
+				mixinName := mixin.Name.ValueString()
+
+				// Add schema URL to metadata
+				site.Metadata.Mixins[mixinName] = mixin.SchemaURL.ValueString()
+
+				// Parse and add fields data to mixins
+				if !mixin.Fields.IsNull() && mixin.Fields.ValueString() != "" {
+					var fieldsData map[string]interface{}
+					if err := json.Unmarshal([]byte(mixin.Fields.ValueString()), &fieldsData); err != nil {
+						diags.AddError(
+							"Invalid Mixin Fields JSON",
+							fmt.Sprintf("Failed to parse mixin '%s' fields JSON: %s", mixinName, err.Error()),
+						)
+					} else {
+						site.Mixins[mixinName] = fieldsData
+					}
 				}
 			}
-		}
-	}
-
-	// Mixins (JSON string)
-	if !model.Mixins.IsNull() && model.Mixins.ValueString() != "" {
-		var mixinsData map[string]interface{}
-		if err := json.Unmarshal([]byte(model.Mixins.ValueString()), &mixinsData); err != nil {
-			diags.AddError(
-				"Invalid Mixins JSON",
-				"Failed to parse mixins JSON: "+err.Error(),
-			)
-		} else {
-			site.Mixins = mixinsData
 		}
 	}
 
@@ -257,12 +260,12 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 		if !plan.HomeBase.IsNull() {
 			homeBaseAttrs := plan.HomeBase.Attributes()
 			homeBase := make(map[string]interface{})
-			
+
 			// Address
 			if addressObj, ok := homeBaseAttrs["address"].(types.Object); ok && !addressObj.IsNull() {
 				addressAttrs := addressObj.Attributes()
 				address := make(map[string]interface{})
-				
+
 				if v, ok := addressAttrs["street"].(types.String); ok && !v.IsNull() {
 					address["street"] = v.ValueString()
 				}
@@ -281,29 +284,29 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 				if v, ok := addressAttrs["state"].(types.String); ok && !v.IsNull() {
 					address["state"] = v.ValueString()
 				}
-				
+
 				if len(address) > 0 {
 					homeBase["address"] = address
 				}
 			}
-			
+
 			// Location
 			if locationObj, ok := homeBaseAttrs["location"].(types.Object); ok && !locationObj.IsNull() {
 				locationAttrs := locationObj.Attributes()
 				location := make(map[string]interface{})
-				
+
 				if v, ok := locationAttrs["latitude"].(types.Float64); ok && !v.IsNull() {
 					location["latitude"] = v.ValueFloat64()
 				}
 				if v, ok := locationAttrs["longitude"].(types.Float64); ok && !v.IsNull() {
 					location["longitude"] = v.ValueFloat64()
 				}
-				
+
 				if len(location) > 0 {
 					homeBase["location"] = location
 				}
 			}
-			
+
 			if len(homeBase) > 0 {
 				patchData["homeBase"] = homeBase
 			}
@@ -317,11 +320,11 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 		if !plan.AssistedBuying.IsNull() {
 			assistedBuyingAttrs := plan.AssistedBuying.Attributes()
 			assistedBuying := make(map[string]interface{})
-			
+
 			if v, ok := assistedBuyingAttrs["storefront_url"].(types.String); ok && !v.IsNull() {
 				assistedBuying["storefrontUrl"] = v.ValueString()
 			}
-			
+
 			if len(assistedBuying) > 0 {
 				patchData["assistedBuying"] = assistedBuying
 			}
@@ -415,7 +418,7 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 	// Home Base
 	if site.HomeBase != nil {
 		homeBaseAttrs := make(map[string]attr.Value)
-		
+
 		// Address
 		if site.HomeBase.Address != nil {
 			addressAttrs := map[string]attr.Value{
@@ -446,7 +449,7 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 				"state":         types.StringType,
 			})
 		}
-		
+
 		// Location
 		if site.HomeBase.Location != nil {
 			locationAttrs := map[string]attr.Value{
@@ -465,7 +468,7 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 				"longitude": types.Float64Type,
 			})
 		}
-		
+
 		homeBaseObj, d := types.ObjectValue(map[string]attr.Type{
 			"address": types.ObjectType{
 				AttrTypes: map[string]attr.Type{
@@ -523,62 +526,103 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 		})
 	}
 
-	// Metadata - API may return this even if not set (version is managed by API, not exposed to users)
+	// Mixins - convert from API format (metadata + mixins) to list of objects
 	// During Read: show actual values (detect drift)
 	// During Create/Update: preserve plan values (prevent consistency errors)
-	if !preservePlanValues || !previousModel.Metadata.IsNull() {
-		// Either in Read mode, or user specified metadata
-		if site.Metadata != nil && len(site.Metadata.Mixins) > 0 {
-			metadataAttrs := make(map[string]attr.Value)
-			
-			// Mixins URLs map (only field we expose to users)
-			if site.Metadata.Mixins != nil && len(site.Metadata.Mixins) > 0 {
-				mixinsMap, d := types.MapValueFrom(ctx, types.StringType, site.Metadata.Mixins)
-				diags.Append(d...)
-				metadataAttrs["mixins"] = mixinsMap
-			} else {
-				metadataAttrs["mixins"] = types.MapNull(types.StringType)
-			}
-			
-			metadataObj, d := types.ObjectValue(map[string]attr.Type{
-				"mixins": types.MapType{ElemType: types.StringType},
-			}, metadataAttrs)
-			diags.Append(d...)
-			model.Metadata = metadataObj
-		} else {
-			model.Metadata = types.ObjectNull(map[string]attr.Type{
-				"mixins": types.MapType{ElemType: types.StringType},
-			})
-		}
-	} else {
-		// In Create/Update mode and user didn't specify metadata, keep null
-		model.Metadata = types.ObjectNull(map[string]attr.Type{
-			"mixins": types.MapType{ElemType: types.StringType},
-		})
-	}
-
-	// Mixins (convert to JSON string) - API may return this even if not set
-	// During Read: show actual values (detect drift)
-	// During Create/Update: preserve plan values (prevent consistency errors)
-	if !preservePlanValues || (!previousModel.Mixins.IsNull() && previousModel.Mixins.ValueString() != "") {
+	if !preservePlanValues || !previousModel.Mixins.IsNull() {
 		// Either in Read mode, or user specified mixins
-		if site.Mixins != nil && len(site.Mixins) > 0 {
-			mixinsJSON, err := json.Marshal(site.Mixins)
-			if err != nil {
-				diags.AddError(
-					"Failed to Marshal Mixins",
-					"Could not convert mixins to JSON: "+err.Error(),
-				)
-				model.Mixins = types.StringNull()
+		if site.Metadata != nil && site.Mixins != nil && len(site.Metadata.Mixins) > 0 && len(site.Mixins) > 0 {
+			var mixinsList []MixinModel
+
+			// Iterate through metadata.mixins to get schema URLs
+			// Only include mixins that have both metadata AND data
+			for mixinName, schemaURL := range site.Metadata.Mixins {
+				if mixinData, ok := site.Mixins[mixinName]; ok {
+					// Convert mixin data to JSON
+					fieldsJSON, err := json.Marshal(mixinData)
+					if err != nil {
+						diags.AddError(
+							"Failed to Marshal Mixin Data",
+							fmt.Sprintf("Could not convert mixin '%s' data to JSON: %s", mixinName, err.Error()),
+						)
+						continue
+					}
+
+					mixinsList = append(mixinsList, MixinModel{
+						Name:      types.StringValue(mixinName),
+						SchemaURL: types.StringValue(schemaURL),
+						Fields:    types.StringValue(string(fieldsJSON)),
+					})
+				}
+			}
+
+			if len(mixinsList) > 0 {
+				mixinsListValue, d := types.ListValueFrom(ctx, types.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"name":       types.StringType,
+						"schema_url": types.StringType,
+						"fields":     types.StringType,
+					},
+				}, mixinsList)
+				diags.Append(d...)
+				model.Mixins = mixinsListValue
 			} else {
-				model.Mixins = types.StringValue(string(mixinsJSON))
+				// No mixins from API - preserve empty list if user specified empty list
+				if !previousModel.Mixins.IsNull() && !previousModel.Mixins.IsUnknown() {
+					// User specified mixins (even if empty), preserve as empty list
+					emptyList, d := types.ListValueFrom(ctx, types.ObjectType{
+						AttrTypes: map[string]attr.Type{
+							"name":       types.StringType,
+							"schema_url": types.StringType,
+							"fields":     types.StringType,
+						},
+					}, []MixinModel{})
+					diags.Append(d...)
+					model.Mixins = emptyList
+				} else {
+					// User didn't specify mixins, keep as null
+					model.Mixins = types.ListNull(types.ObjectType{
+						AttrTypes: map[string]attr.Type{
+							"name":       types.StringType,
+							"schema_url": types.StringType,
+							"fields":     types.StringType,
+						},
+					})
+				}
 			}
 		} else {
-			model.Mixins = types.StringNull()
+			// No mixins from API
+			if !previousModel.Mixins.IsNull() && !previousModel.Mixins.IsUnknown() {
+				// User specified mixins (even if empty), preserve as empty list
+				emptyList, d := types.ListValueFrom(ctx, types.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"name":       types.StringType,
+						"schema_url": types.StringType,
+						"fields":     types.StringType,
+					},
+				}, []MixinModel{})
+				diags.Append(d...)
+				model.Mixins = emptyList
+			} else {
+				// User didn't specify mixins, keep as null
+				model.Mixins = types.ListNull(types.ObjectType{
+					AttrTypes: map[string]attr.Type{
+						"name":       types.StringType,
+						"schema_url": types.StringType,
+						"fields":     types.StringType,
+					},
+				})
+			}
 		}
 	} else {
 		// In Create/Update mode and user didn't specify mixins, keep null
-		model.Mixins = types.StringNull()
+		model.Mixins = types.ListNull(types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"name":       types.StringType,
+				"schema_url": types.StringType,
+				"fields":     types.StringType,
+			},
+		})
 	}
 }
 

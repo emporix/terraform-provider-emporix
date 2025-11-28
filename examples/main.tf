@@ -136,19 +136,18 @@ resource "emporix_sitesettings" "advanced_site" {
 
   cart_calculation_scale = 2
 
-  # Metadata contains mixin schema URLs and version
-  metadata = {
-    mixins = {
-      test3 = "https://res.cloudinary.com/saas-ag/raw/upload/schemata2/ppmdev/test3_v1.json"
+  # Mixins - unified format with schema URL and data in single objects
+  mixins = [
+    {
+      name       = "test3"
+      schema_url = "https://res.cloudinary.com/saas-ag/raw/upload/schemata2/ppmdev/test3_v1.json"
+      fields = jsonencode({
+        field3 = "value3"
+      })
     }
-  }
+  ]
 
-  # Mixins contains the actual mixin data as JSON
-  mixins = jsonencode({
-    test3 = {
-      field3    = "value3"
-    }
-  })
+  ship_to_countries = ["US"]
 
   home_base = {
     address = {

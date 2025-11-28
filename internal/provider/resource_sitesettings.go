@@ -43,8 +43,14 @@ type SiteSettingsResourceModel struct {
 	CartCalculationScale      types.Int64  `tfsdk:"cart_calculation_scale"`
 	HomeBase                  types.Object `tfsdk:"home_base"`
 	AssistedBuying            types.Object `tfsdk:"assisted_buying"`
-	Metadata                  types.Object `tfsdk:"metadata"`
-	Mixins                    types.String `tfsdk:"mixins"`
+	Mixins                    types.List   `tfsdk:"mixins"`
+}
+
+// MixinModel represents a single mixin with its schema URL and data
+type MixinModel struct {
+	Name      types.String `tfsdk:"name"`
+	SchemaURL types.String `tfsdk:"schema_url"`
+	Fields    types.String `tfsdk:"fields"`
 }
 
 func (r *SiteSettingsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -175,20 +181,25 @@ func (r *SiteSettingsResource) Schema(ctx context.Context, req resource.SchemaRe
 					},
 				},
 			},
-			"metadata": schema.SingleNestedAttribute{
-				Description: "Metadata configuration with mixin schema URLs (version is managed automatically by the API).",
+			"mixins": schema.ListNestedAttribute{
+				Description: "List of mixins with their schema URLs and data. Each mixin combines the schema URL (from metadata) and the actual fields in a single object.",
 				Optional:    true,
-				Attributes: map[string]schema.Attribute{
-					"mixins": schema.MapAttribute{
-						Description: "Map of mixin names to their schema URLs.",
-						ElementType: types.StringType,
-						Optional:    true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							Description: "Name of the mixin (must be unique within the site).",
+							Required:    true,
+						},
+						"schema_url": schema.StringAttribute{
+							Description: "URL to the JSON schema that defines this mixin's structure.",
+							Required:    true,
+						},
+						"fields": schema.StringAttribute{
+							Description: "Mixin data as JSON string. Use jsonencode() to convert a map to JSON. Example: jsonencode({\"field1\" = \"value1\"})",
+							Required:    true,
+						},
 					},
 				},
-			},
-			"mixins": schema.StringAttribute{
-				Description: "Custom mixins data as JSON string. Example: jsonencode({\"test1\" = {\"field1\" = \"value1\"}})",
-				Optional:    true,
 			},
 		},
 	}
@@ -420,69 +431,73 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 	}
 
 	// Handle mixins separately via PATCH/DELETE (even if regular fields didn't change)
-	mixinsChanged := !plan.Mixins.Equal(state.Mixins) || !plan.Metadata.Equal(state.Metadata)
+	mixinsChanged := !plan.Mixins.Equal(state.Mixins)
 
 	if mixinsChanged {
-		// Parse current mixins from state
-		var oldMixins map[string]interface{}
-		if !state.Mixins.IsNull() && state.Mixins.ValueString() != "" {
-			if err := json.Unmarshal([]byte(state.Mixins.ValueString()), &oldMixins); err != nil {
-				resp.Diagnostics.AddError(
-					"Error parsing old mixins",
-					fmt.Sprintf("Could not parse old mixins JSON: %s", err.Error()),
-				)
-				return
+		// Parse old mixins list from state
+		var oldMixinsList []MixinModel
+		oldMixinsMap := make(map[string]bool)
+		if !state.Mixins.IsNull() {
+			diagsTemp := state.Mixins.ElementsAs(ctx, &oldMixinsList, false)
+			resp.Diagnostics.Append(diagsTemp...)
+			for _, m := range oldMixinsList {
+				oldMixinsMap[m.Name.ValueString()] = true
 			}
 		}
 
-		// Parse new mixins from plan
-		var newMixins map[string]interface{}
-		if !plan.Mixins.IsNull() && plan.Mixins.ValueString() != "" {
-			if err := json.Unmarshal([]byte(plan.Mixins.ValueString()), &newMixins); err != nil {
-				resp.Diagnostics.AddError(
-					"Error parsing new mixins",
-					fmt.Sprintf("Could not parse new mixins JSON: %s", err.Error()),
-				)
-				return
+		// Parse new mixins list from plan
+		var newMixinsList []MixinModel
+		newMixinsMap := make(map[string]bool)
+		if !plan.Mixins.IsNull() {
+			diagsTemp := plan.Mixins.ElementsAs(ctx, &newMixinsList, false)
+			resp.Diagnostics.Append(diagsTemp...)
+			for _, m := range newMixinsList {
+				newMixinsMap[m.Name.ValueString()] = true
 			}
 		}
 
 		// Detect deleted mixins (in old but not in new)
-		if oldMixins != nil {
-			for mixinName := range oldMixins {
-				if newMixins == nil || newMixins[mixinName] == nil {
-					// Mixin was deleted
-					err := r.client.DeleteSiteMixin(plan.Code.ValueString(), mixinName)
-					if err != nil {
-						resp.Diagnostics.AddError(
-							"Error deleting mixin",
-							fmt.Sprintf("Could not delete mixin %s: %s", mixinName, err.Error()),
-						)
-						return
-					}
+		for mixinName := range oldMixinsMap {
+			if !newMixinsMap[mixinName] {
+				err := r.client.DeleteSiteMixin(plan.Code.ValueString(), mixinName)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						"Error deleting mixin",
+						fmt.Sprintf("Could not delete mixin %s: %s", mixinName, err.Error()),
+					)
+					return
 				}
 			}
 		}
 
-		// Update/add mixins via PATCH (only if we have mixins to update)
-		if newMixins != nil && len(newMixins) > 0 {
-			// Get metadata from plan
-			var metadata *Metadata
-			if !plan.Metadata.IsNull() {
-				metadataAttrs := plan.Metadata.Attributes()
-				metadata = &Metadata{}
+		// Update/add mixins via PATCH (all new mixins)
+		if len(newMixinsList) > 0 {
+			metadata := &Metadata{
+				Mixins: make(map[string]string),
+			}
+			mixinsData := make(map[string]interface{})
 
-				if mixinsMapObj, ok := metadataAttrs["mixins"].(types.Map); ok && !mixinsMapObj.IsNull() {
-					var mixinsMap map[string]string
-					diagsTemp := mixinsMapObj.ElementsAs(ctx, &mixinsMap, false)
-					resp.Diagnostics.Append(diagsTemp...)
-					if len(mixinsMap) > 0 {
-						metadata.Mixins = mixinsMap
+			for _, mixin := range newMixinsList {
+				mixinName := mixin.Name.ValueString()
+
+				// Add schema URL to metadata
+				metadata.Mixins[mixinName] = mixin.SchemaURL.ValueString()
+
+				// Parse and add fields data
+				if !mixin.Fields.IsNull() && mixin.Fields.ValueString() != "" {
+					var fieldsData map[string]interface{}
+					if err := json.Unmarshal([]byte(mixin.Fields.ValueString()), &fieldsData); err != nil {
+						resp.Diagnostics.AddError(
+							"Error parsing mixin fields",
+							fmt.Sprintf("Could not parse mixin '%s' fields JSON: %s", mixinName, err.Error()),
+						)
+						return
 					}
+					mixinsData[mixinName] = fieldsData
 				}
 			}
 
-			err := r.client.PatchSiteMixins(plan.Code.ValueString(), newMixins, metadata)
+			err := r.client.PatchSiteMixins(plan.Code.ValueString(), mixinsData, metadata)
 			if err != nil {
 				resp.Diagnostics.AddError(
 					"Error updating mixins",
