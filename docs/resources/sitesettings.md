@@ -22,6 +22,14 @@ resource "emporix_sitesettings" "us_site" {
   languages        = ["en", "es"]
   currency         = "USD"
   ship_to_countries = ["US"]
+
+  home_base = {
+    address = {
+      country  = "US"
+      zip_code = "10001"
+      city     = "New York"
+    }
+  }
 }
 ```
 
@@ -157,6 +165,7 @@ resource "emporix_sitesettings" "site_with_mixins" {
 - `languages` (List of String) Languages supported by the site. Must be compliant with ISO 639-1 standard.
 - `currency` (String) Currency used by the site, compliant with ISO 4217 standard (e.g., "USD", "EUR").
 - `ship_to_countries` (List of String) Codes of countries to which the site ships products. Must be compliant with ISO 3166-1 alpha-2 standard.
+- `home_base` (Object) Home base configuration for the site. See [Home Base](#nested-schema-for-home_base) below.
 
 ### Optional
 
@@ -166,9 +175,8 @@ resource "emporix_sitesettings" "site_with_mixins" {
 - `tax_calculation_address_type` (String) Specifies whether tax calculation is based on customer billing address or shipping address. Valid values: `BILLING_ADDRESS`, `SHIPPING_ADDRESS`. Defaults to `BILLING_ADDRESS`.
 - `decimal_points` (Number) Number of decimal points used in cart calculations. Must be zero or positive. Defaults to `2`.
 - `cart_calculation_scale` (Number) Scale for cart calculations. Defaults to `2`.
-- `home_base` (Object) Home base configuration for the site. See [Home Base](#home-base) below.
-- `assisted_buying` (Object) Assisted buying configuration. See [Assisted Buying](#assisted-buying) below.
-- `mixins` (List of Object) Custom mixin configurations. See [Mixins](#mixins) below.
+- `assisted_buying` (Object) Assisted buying configuration. See [Assisted Buying](#nested-schema-for-assisted_buying) below.
+- `mixins` (List of Object) Custom mixin configurations. See [Mixins](#nested-schema-for-mixins) below.
 
 ### Read-Only
 
@@ -176,23 +184,26 @@ resource "emporix_sitesettings" "site_with_mixins" {
 
 ## Nested Schema for `home_base`
 
+Required:
+
+- `address` (Object) Address configuration. See [Address](#nested-schema-for-home_baseaddress) below.
+
 Optional:
 
-- `address` (Object) Address configuration. See [Address](#address) below.
-- `location` (Object) Geographic location. See [Location](#location) below.
+- `location` (Object) Geographic location. See [Location](#nested-schema-for-home_baselocation) below.
 
 ### Nested Schema for `home_base.address`
 
 Required:
 
 - `country` (String) Country code (ISO 3166-1 alpha-2).
+- `zip_code` (String) ZIP/Postal code.
+- `city` (String) City name.
 
 Optional:
 
 - `street` (String) Street name.
 - `street_number` (String) Street number.
-- `zip_code` (String) ZIP/Postal code.
-- `city` (String) City name.
 - `state` (String) State or province.
 
 ### Nested Schema for `home_base.location`

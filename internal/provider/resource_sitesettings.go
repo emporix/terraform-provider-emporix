@@ -132,10 +132,10 @@ func (r *SiteSettingsResource) Schema(ctx context.Context, req resource.SchemaRe
 			},
 			"home_base": schema.SingleNestedAttribute{
 				Description: "Home base configuration for the site.",
-				Optional:    true,
+				Required:    true,
 				Attributes: map[string]schema.Attribute{
 					"address": schema.SingleNestedAttribute{
-						Optional: true,
+						Required: true,
 						Attributes: map[string]schema.Attribute{
 							"street": schema.StringAttribute{
 								Optional: true,
@@ -144,10 +144,10 @@ func (r *SiteSettingsResource) Schema(ctx context.Context, req resource.SchemaRe
 								Optional: true,
 							},
 							"zip_code": schema.StringAttribute{
-								Optional: true,
+								Required: true,
 							},
 							"city": schema.StringAttribute{
-								Optional: true,
+								Required: true,
 							},
 							"country": schema.StringAttribute{
 								Required: true,

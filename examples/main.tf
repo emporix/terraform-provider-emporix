@@ -69,7 +69,7 @@ resource "emporix_sitesettings" "eu_site" {
   languages            = ["en", "de", "fr", "es", "it"]
   currency             = "EUR"
   available_currencies = ["EUR", "GBP", "CHF"]
-  
+
   ship_to_countries = [
     "DE", "FR", "IT", "ES", "NL", 
     "BE", "AT", "CH", "PL", "SE"
@@ -77,7 +77,7 @@ resource "emporix_sitesettings" "eu_site" {
   
   tax_calculation_address_type = "SHIPPING_ADDRESS"
   decimal_points               = 2
-  
+
   home_base = {
     address = {
       country       = "DE"
@@ -91,7 +91,7 @@ resource "emporix_sitesettings" "eu_site" {
       longitude = 13.4050
     }
   }
-  
+
   assisted_buying = {
     storefront_url = "https://shop.example.com/eu"
   }
@@ -107,9 +107,9 @@ resource "emporix_sitesettings" "uk_site" {
   default_language = "en"
   languages        = ["en"]
   currency         = "GBP"
-  
+
   ship_to_countries = ["GB"]
-  
+
   home_base = {
     address = {
       country  = "GB"
@@ -151,9 +151,9 @@ resource "emporix_sitesettings" "advanced_site" {
 
   home_base = {
     address = {
-      country = "US"
-      city    = "New York"
-      zip_code = "AAA"
+      country  = "US"
+      zip_code = "10001"
+      city     = "New York"
     }
   }
 }
