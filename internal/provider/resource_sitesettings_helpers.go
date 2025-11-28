@@ -40,12 +40,10 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 		site.AvailableCurrencies = availableCurrencies
 	}
 
-	// Ship To Countries
-	if !model.ShipToCountries.IsNull() {
-		var shipToCountries []string
-		diags.Append(model.ShipToCountries.ElementsAs(ctx, &shipToCountries, false)...)
-		site.ShipToCountries = shipToCountries
-	}
+	// Ship To Countries (required)
+	var shipToCountries []string
+	diags.Append(model.ShipToCountries.ElementsAs(ctx, &shipToCountries, false)...)
+	site.ShipToCountries = shipToCountries
 
 	// Tax Calculation Address Type
 	if !model.TaxCalculationAddressType.IsNull() {
@@ -217,15 +215,11 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 		}
 	}
 
-	// ShipToCountries
+	// ShipToCountries (required)
 	if !plan.ShipToCountries.Equal(state.ShipToCountries) {
-		if !plan.ShipToCountries.IsNull() {
-			var shipToCountries []string
-			diags.Append(plan.ShipToCountries.ElementsAs(ctx, &shipToCountries, false)...)
-			patchData["shipToCountries"] = shipToCountries
-		} else {
-			patchData["shipToCountries"] = nil
-		}
+		var shipToCountries []string
+		diags.Append(plan.ShipToCountries.ElementsAs(ctx, &shipToCountries, false)...)
+		patchData["shipToCountries"] = shipToCountries
 	}
 
 	// TaxCalculationAddressType
@@ -375,21 +369,16 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 		model.AvailableCurrencies = types.ListNull(types.StringType)
 	}
 
-	// Ship To Countries - API may return this even if not set
-	// During Read: show actual values (detect drift)
-	// During Create/Update: preserve plan values (prevent consistency errors)
-	if !preservePlanValues || !previousModel.ShipToCountries.IsNull() {
-		// Either in Read mode, or user specified ship_to_countries
-		if site.ShipToCountries != nil {
-			countriesList, d := types.ListValueFrom(ctx, types.StringType, site.ShipToCountries)
-			diags.Append(d...)
-			model.ShipToCountries = countriesList
-		} else {
-			model.ShipToCountries = types.ListNull(types.StringType)
-		}
+	// Ship To Countries (required)
+	if site.ShipToCountries != nil && len(site.ShipToCountries) > 0 {
+		countriesList, d := types.ListValueFrom(ctx, types.StringType, site.ShipToCountries)
+		diags.Append(d...)
+		model.ShipToCountries = countriesList
 	} else {
-		// In Create/Update mode and user didn't specify, keep null
-		model.ShipToCountries = types.ListNull(types.StringType)
+		// API didn't return any - use empty list
+		emptyList, d := types.ListValueFrom(ctx, types.StringType, []string{})
+		diags.Append(d...)
+		model.ShipToCountries = emptyList
 	}
 
 	// Tax Calculation Address Type - API doesn't reliably return this value, so preserve from previous state/plan

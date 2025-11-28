@@ -74,9 +74,7 @@ func (r *SiteSettingsResource) Schema(ctx context.Context, req resource.SchemaRe
 			},
 			"active": schema.BoolAttribute{
 				Description: "Flag indicating whether the site is active.",
-				Optional:    true,
-				Computed:    true,
-				Default:     booldefault.StaticBool(true),
+				Required:    true,
 			},
 			"default": schema.BoolAttribute{
 				Description: "Flag indicating whether the site is the tenant default site.",
@@ -109,7 +107,7 @@ func (r *SiteSettingsResource) Schema(ctx context.Context, req resource.SchemaRe
 			"ship_to_countries": schema.ListAttribute{
 				Description: "Codes of countries to which the site ships products. Must be compliant with the ISO 3166-1 alpha-2 standard.",
 				ElementType: types.StringType,
-				Optional:    true,
+				Required:    true,
 			},
 			"tax_calculation_address_type": schema.StringAttribute{
 				Description: "Specifies whether tax calculation is based on customer billing address or shipping address. Default value is BILLING_ADDRESS.",

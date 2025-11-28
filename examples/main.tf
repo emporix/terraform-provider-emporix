@@ -43,9 +43,9 @@ resource "emporix_sitesettings" "us_site" {
   default_language = "en"
   languages        = ["en", "es"]
   currency         = "USD"
-  
+
   ship_to_countries = ["US"]
-  
+
   home_base = {
     address = {
       country       = "US"
@@ -134,6 +134,8 @@ resource "emporix_sitesettings" "advanced_site" {
   languages        = ["en"]
   currency         = "USD"
 
+  ship_to_countries = ["US"]
+
   cart_calculation_scale = 2
 
   # Mixins - unified format with schema URL and data in single objects
@@ -146,8 +148,6 @@ resource "emporix_sitesettings" "advanced_site" {
       })
     }
   ]
-
-  ship_to_countries = ["US"]
 
   home_base = {
     address = {
