@@ -28,18 +28,12 @@ builds:
     binary: '{{ .ProjectName }}_v{{ .Version }}'
 
 archives:
-  - name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
-    format_overrides:
-      - goos: windows
-        format: zip
-      - goos: darwin
-        format: zip
-      - goos: linux
-        format: zip
+  - formats: ["zip"]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
     files:
       - LICENSE
       - README.md
-      - docs/resources/*
+      - docs/*
 
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_SHA256SUMS'
