@@ -62,22 +62,33 @@ func (c *EmporixClient) doRequest(ctx context.Context, method, path string, body
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
 
-	// Always log response (Terraform's TF_LOG level controls what's shown)
-	c.logResponse(ctx, resp)
+	// Read body once for logging (and error checking)
+	var respBody []byte
+	if resp.Body != nil {
+		respBody, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("error reading response body: %w", err)
+		}
+		// Restore body for caller
+		resp.Body = io.NopCloser(bytes.NewBuffer(respBody))
+	}
+
+	// Log response with body
+	c.logResponseWithBody(ctx, resp.StatusCode, resp.Status, respBody)
 
 	return resp, nil
 }
 
-// checkResponse is a helper to validate HTTP response and return detailed error
-func (c *EmporixClient) checkResponse(ctx context.Context, resp *http.Response, expectedStatus int) error {
-	if resp.StatusCode == expectedStatus {
-		return nil
+// checkResponse validates HTTP response status and returns detailed error
+func (c *EmporixClient) checkResponse(ctx context.Context, statusCode int, body []byte, expectedStatuses ...int) error {
+	for _, expected := range expectedStatuses {
+		if statusCode == expected {
+			return nil
+		}
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	c.logResponseBody(ctx, resp.StatusCode, bodyBytes)
-
-	return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(bodyBytes))
+	return fmt.Errorf("unexpected status code: %d, body: %s", statusCode, string(body))
 }
 
 func (c *EmporixClient) logRequest(ctx context.Context, req *http.Request, bodyBytes []byte) {
@@ -110,50 +121,34 @@ func (c *EmporixClient) logRequest(ctx context.Context, req *http.Request, bodyB
 	}
 }
 
-func (c *EmporixClient) logResponse(ctx context.Context, resp *http.Response) {
-	if ctx == nil || resp == nil {
+func (c *EmporixClient) logResponseWithBody(ctx context.Context, statusCode int, status string, bodyBytes []byte) {
+	if ctx == nil {
 		return
 	}
 
-	// Log with http subsystem
+	// Log response metadata at DEBUG level
 	tflog.Debug(ctx, "API Response",
 		map[string]interface{}{
 			"subsystem":   "http",
-			"status":      resp.Status,
-			"status_code": resp.StatusCode,
+			"status":      status,
+			"status_code": statusCode,
 		})
 
-	// Read and log body, then restore it
-	if resp.Body != nil {
-		defer resp.Body.Close()
-
-		bodyBytes, err := io.ReadAll(resp.Body)
-		if err == nil && len(bodyBytes) > 0 {
-			c.logResponseBody(ctx, resp.StatusCode, bodyBytes)
-			// Restore body
-			resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	// Log response body at TRACE level
+	if len(bodyBytes) > 0 {
+		var prettyJSON bytes.Buffer
+		if err := json.Indent(&prettyJSON, bodyBytes, "", "  "); err == nil {
+			tflog.Trace(ctx, "Response body (JSON):\n"+prettyJSON.String(), map[string]interface{}{
+				"subsystem":   "http",
+				"status_code": statusCode,
+			})
+		} else {
+			tflog.Trace(ctx, "Response body", map[string]interface{}{
+				"subsystem":   "http",
+				"status_code": statusCode,
+				"body":        string(bodyBytes),
+			})
 		}
-	}
-}
-
-func (c *EmporixClient) logResponseBody(ctx context.Context, statusCode int, bodyBytes []byte) {
-	if len(bodyBytes) == 0 {
-		return
-	}
-
-	// Pretty print JSON
-	var prettyJSON bytes.Buffer
-	if err := json.Indent(&prettyJSON, bodyBytes, "", "  "); err == nil {
-		tflog.Trace(ctx, "Response body (JSON):\n"+prettyJSON.String(), map[string]interface{}{
-			"subsystem":   "http",
-			"status_code": statusCode,
-		})
-	} else {
-		tflog.Trace(ctx, "Response body", map[string]interface{}{
-			"subsystem":   "http",
-			"status_code": statusCode,
-			"body":        string(bodyBytes),
-		})
 	}
 }
 
@@ -165,7 +160,9 @@ func (c *EmporixClient) CreateSite(ctx context.Context, site *SiteSettings) erro
 	}
 	defer resp.Body.Close()
 
-	return c.checkResponse(ctx, resp, http.StatusCreated)
+	// Read body for error checking (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated)
 }
 
 func (c *EmporixClient) GetSite(ctx context.Context, siteCode string) (*SiteSettings, error) {
@@ -180,12 +177,14 @@ func (c *EmporixClient) GetSite(ctx context.Context, siteCode string) (*SiteSett
 		return nil, nil
 	}
 
-	if err := c.checkResponse(ctx, resp, http.StatusOK); err != nil {
+	// Read body (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
 	}
 
 	var site SiteSettings
-	if err := json.NewDecoder(resp.Body).Decode(&site); err != nil {
+	if err := json.Unmarshal(bodyBytes, &site); err != nil {
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 
@@ -200,13 +199,9 @@ func (c *EmporixClient) UpdateSite(ctx context.Context, siteCode string, patchDa
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		c.logResponseBody(ctx, resp.StatusCode, bodyBytes)
-		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	return nil
+	// Read body (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK)
 }
 
 func (c *EmporixClient) DeleteSite(ctx context.Context, siteCode string) error {
@@ -217,13 +212,9 @@ func (c *EmporixClient) DeleteSite(ctx context.Context, siteCode string) error {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		c.logResponseBody(ctx, resp.StatusCode, bodyBytes)
-		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	return nil
+	// Read body (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK)
 }
 
 // PatchSiteMixins updates mixins and metadata using PATCH
@@ -249,10 +240,10 @@ func (c *EmporixClient) PatchSiteMixins(ctx context.Context, siteCode string, mi
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		c.logResponseBody(ctx, resp.StatusCode, bodyBytes)
-		return fmt.Errorf("failed to patch site mixins: status %d, body: %s", resp.StatusCode, string(bodyBytes))
+	// Read body (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
+		return fmt.Errorf("failed to patch site mixins: %w", err)
 	}
 
 	return nil
@@ -267,10 +258,10 @@ func (c *EmporixClient) DeleteSiteMixin(ctx context.Context, siteCode string, mi
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		c.logResponseBody(ctx, resp.StatusCode, bodyBytes)
-		return fmt.Errorf("failed to delete mixin %s: status %d, body: %s", mixinName, resp.StatusCode, string(bodyBytes))
+	// Read body (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
+		return fmt.Errorf("failed to delete mixin %s: %w", mixinName, err)
 	}
 
 	return nil
