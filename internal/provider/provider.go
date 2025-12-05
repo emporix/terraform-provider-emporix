@@ -167,13 +167,12 @@ func (p *EmporixProvider) Configure(ctx context.Context, req provider.ConfigureR
 		tflog.Debug(ctx, "Successfully generated OAuth access token")
 	}
 
-	// Create API client
-	client := &EmporixClient{
-		Tenant:      config.Tenant.ValueString(),
-		AccessToken: config.AccessToken.ValueString(),
-		ApiUrl:      config.ApiUrl.ValueString(),
-	}
-	client.SetContext(ctx)
+	// Create API client with timeout
+	client := NewEmporixClient(
+		config.Tenant.ValueString(),
+		config.AccessToken.ValueString(),
+		config.ApiUrl.ValueString(),
+	)
 
 	resp.DataSourceData = client
 	resp.ResourceData = client

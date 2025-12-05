@@ -250,7 +250,7 @@ func (r *SiteSettingsResource) Create(ctx context.Context, req resource.CreateRe
 	site.Mixins = nil
 	site.Metadata = nil
 
-	err := r.client.CreateSite(site)
+	err := r.client.CreateSite(ctx, site)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating site",
@@ -261,7 +261,7 @@ func (r *SiteSettingsResource) Create(ctx context.Context, req resource.CreateRe
 
 	// Step 2: Add mixins via PATCH (if any)
 	if mixinsToCreate != nil && len(mixinsToCreate) > 0 {
-		err := r.client.PatchSiteMixins(plan.Code.ValueString(), mixinsToCreate, metadataToCreate)
+		err := r.client.PatchSiteMixins(ctx, plan.Code.ValueString(), mixinsToCreate, metadataToCreate)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Error adding mixins",
@@ -272,7 +272,7 @@ func (r *SiteSettingsResource) Create(ctx context.Context, req resource.CreateRe
 	}
 
 	// Read back the created site to get computed values
-	createdSite, err := r.client.GetSite(plan.Code.ValueString())
+	createdSite, err := r.client.GetSite(ctx, plan.Code.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading created site",
@@ -305,7 +305,7 @@ func (r *SiteSettingsResource) Read(ctx context.Context, req resource.ReadReques
 		return
 	}
 
-	site, err := r.client.GetSite(state.Code.ValueString())
+	site, err := r.client.GetSite(ctx, state.Code.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading site",
@@ -417,7 +417,7 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 
 		// Only send PATCH if there are actually fields to update
 		if len(patchData) > 0 {
-			err := r.client.UpdateSite(plan.Code.ValueString(), patchData)
+			err := r.client.UpdateSite(ctx, plan.Code.ValueString(), patchData)
 			if err != nil {
 				resp.Diagnostics.AddError(
 					"Error updating site",
@@ -457,7 +457,7 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 		// Detect deleted mixins (in old but not in new)
 		for mixinName := range oldMixinsMap {
 			if !newMixinsMap[mixinName] {
-				err := r.client.DeleteSiteMixin(plan.Code.ValueString(), mixinName)
+				err := r.client.DeleteSiteMixin(ctx, plan.Code.ValueString(), mixinName)
 				if err != nil {
 					resp.Diagnostics.AddError(
 						"Error deleting mixin",
@@ -495,7 +495,7 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 				}
 			}
 
-			err := r.client.PatchSiteMixins(plan.Code.ValueString(), mixinsData, metadata)
+			err := r.client.PatchSiteMixins(ctx, plan.Code.ValueString(), mixinsData, metadata)
 			if err != nil {
 				resp.Diagnostics.AddError(
 					"Error updating mixins",
@@ -507,7 +507,7 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 	}
 
 	// Read back the updated site
-	updatedSite, err := r.client.GetSite(plan.Code.ValueString())
+	updatedSite, err := r.client.GetSite(ctx, plan.Code.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error reading updated site",
@@ -539,7 +539,7 @@ func (r *SiteSettingsResource) Delete(ctx context.Context, req resource.DeleteRe
 		return
 	}
 
-	err := r.client.DeleteSite(state.Code.ValueString())
+	err := r.client.DeleteSite(ctx, state.Code.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting site",

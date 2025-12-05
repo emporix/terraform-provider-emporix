@@ -262,42 +262,72 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 
 				if v, ok := addressAttrs["street"].(types.String); ok && !v.IsNull() {
 					address["street"] = v.ValueString()
+				} else {
+					address["street"] = nil
 				}
 				if v, ok := addressAttrs["street_number"].(types.String); ok && !v.IsNull() {
 					address["streetNumber"] = v.ValueString()
+				} else {
+					address["streetNumber"] = nil
 				}
 				if v, ok := addressAttrs["zip_code"].(types.String); ok && !v.IsNull() {
 					address["zipCode"] = v.ValueString()
+				} else {
+					address["zipCode"] = nil
 				}
 				if v, ok := addressAttrs["city"].(types.String); ok && !v.IsNull() {
 					address["city"] = v.ValueString()
+				} else {
+					address["city"] = nil
 				}
 				if v, ok := addressAttrs["country"].(types.String); ok && !v.IsNull() {
 					address["country"] = v.ValueString()
+				} else {
+					address["country"] = nil
 				}
 				if v, ok := addressAttrs["state"].(types.String); ok && !v.IsNull() {
 					address["state"] = v.ValueString()
+				} else {
+					address["state"] = nil
 				}
 
-				if len(address) > 0 {
-					homeBase["address"] = address
-				}
+				homeBase["address"] = address
 			}
 
-			// Location
-			if locationObj, ok := homeBaseAttrs["location"].(types.Object); ok && !locationObj.IsNull() {
-				locationAttrs := locationObj.Attributes()
-				location := make(map[string]interface{})
+			// Location - handle both setting values and nulling
+			planLocationObj, planLocationExists := homeBaseAttrs["location"].(types.Object)
+			stateHomeBaseAttrs := state.HomeBase.Attributes()
+			stateLocationObj, stateLocationExists := stateHomeBaseAttrs["location"].(types.Object)
 
-				if v, ok := locationAttrs["latitude"].(types.Float64); ok && !v.IsNull() {
-					location["latitude"] = v.ValueFloat64()
-				}
-				if v, ok := locationAttrs["longitude"].(types.Float64); ok && !v.IsNull() {
-					location["longitude"] = v.ValueFloat64()
-				}
+			// Check if location changed
+			locationChanged := false
+			if planLocationExists && stateLocationExists {
+				locationChanged = !planLocationObj.Equal(stateLocationObj)
+			} else if planLocationExists != stateLocationExists {
+				locationChanged = true
+			}
 
-				if len(location) > 0 {
+			if locationChanged {
+				if planLocationExists && !planLocationObj.IsNull() {
+					// Location has a value - include it
+					locationAttrs := planLocationObj.Attributes()
+					location := make(map[string]interface{})
+
+					if v, ok := locationAttrs["latitude"].(types.Float64); ok && !v.IsNull() {
+						location["latitude"] = v.ValueFloat64()
+					} else {
+						location["latitude"] = nil
+					}
+					if v, ok := locationAttrs["longitude"].(types.Float64); ok && !v.IsNull() {
+						location["longitude"] = v.ValueFloat64()
+					} else {
+						location["longitude"] = nil
+					}
+
 					homeBase["location"] = location
+				} else {
+					// Location was removed - explicitly set to null
+					homeBase["location"] = nil
 				}
 			}
 
@@ -317,11 +347,11 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 
 			if v, ok := assistedBuyingAttrs["storefront_url"].(types.String); ok && !v.IsNull() {
 				assistedBuying["storefrontUrl"] = v.ValueString()
+			} else {
+				assistedBuying["storefrontUrl"] = nil
 			}
 
-			if len(assistedBuying) > 0 {
-				patchData["assistedBuying"] = assistedBuying
-			}
+			patchData["assistedBuying"] = assistedBuying
 		} else {
 			patchData["assistedBuying"] = nil
 		}
