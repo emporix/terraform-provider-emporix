@@ -260,47 +260,35 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 				addressAttrs := addressObj.Attributes()
 				address := make(map[string]interface{})
 
-				if v, ok := addressAttrs["street"].(types.String); ok {
-					if !v.IsNull() {
-						address["street"] = v.ValueString()
-					} else {
-						address["street"] = nil
-					}
+				if v, ok := addressAttrs["street"].(types.String); ok && !v.IsNull() {
+					address["street"] = v.ValueString()
+				} else {
+					address["street"] = nil
 				}
-				if v, ok := addressAttrs["street_number"].(types.String); ok {
-					if !v.IsNull() {
-						address["streetNumber"] = v.ValueString()
-					} else {
-						address["streetNumber"] = nil
-					}
+				if v, ok := addressAttrs["street_number"].(types.String); ok && !v.IsNull() {
+					address["streetNumber"] = v.ValueString()
+				} else {
+					address["streetNumber"] = nil
 				}
-				if v, ok := addressAttrs["zip_code"].(types.String); ok {
-					if !v.IsNull() {
-						address["zipCode"] = v.ValueString()
-					} else {
-						address["zipCode"] = nil
-					}
+				if v, ok := addressAttrs["zip_code"].(types.String); ok && !v.IsNull() {
+					address["zipCode"] = v.ValueString()
+				} else {
+					address["zipCode"] = nil
 				}
-				if v, ok := addressAttrs["city"].(types.String); ok {
-					if !v.IsNull() {
-						address["city"] = v.ValueString()
-					} else {
-						address["city"] = nil
-					}
+				if v, ok := addressAttrs["city"].(types.String); ok && !v.IsNull() {
+					address["city"] = v.ValueString()
+				} else {
+					address["city"] = nil
 				}
-				if v, ok := addressAttrs["country"].(types.String); ok {
-					if !v.IsNull() {
-						address["country"] = v.ValueString()
-					} else {
-						address["country"] = nil
-					}
+				if v, ok := addressAttrs["country"].(types.String); ok && !v.IsNull() {
+					address["country"] = v.ValueString()
+				} else {
+					address["country"] = nil
 				}
-				if v, ok := addressAttrs["state"].(types.String); ok {
-					if !v.IsNull() {
-						address["state"] = v.ValueString()
-					} else {
-						address["state"] = nil
-					}
+				if v, ok := addressAttrs["state"].(types.String); ok && !v.IsNull() {
+					address["state"] = v.ValueString()
+				} else {
+					address["state"] = nil
 				}
 
 				homeBase["address"] = address
@@ -325,19 +313,15 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 					locationAttrs := planLocationObj.Attributes()
 					location := make(map[string]interface{})
 
-					if v, ok := locationAttrs["latitude"].(types.Float64); ok {
-						if !v.IsNull() {
-							location["latitude"] = v.ValueFloat64()
-						} else {
-							location["latitude"] = nil
-						}
+					if v, ok := locationAttrs["latitude"].(types.Float64); ok && !v.IsNull() {
+						location["latitude"] = v.ValueFloat64()
+					} else {
+						location["latitude"] = nil
 					}
-					if v, ok := locationAttrs["longitude"].(types.Float64); ok {
-						if !v.IsNull() {
-							location["longitude"] = v.ValueFloat64()
-						} else {
-							location["longitude"] = nil
-						}
+					if v, ok := locationAttrs["longitude"].(types.Float64); ok && !v.IsNull() {
+						location["longitude"] = v.ValueFloat64()
+					} else {
+						location["longitude"] = nil
 					}
 
 					homeBase["location"] = location
@@ -361,12 +345,10 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 			assistedBuyingAttrs := plan.AssistedBuying.Attributes()
 			assistedBuying := make(map[string]interface{})
 
-			if v, ok := assistedBuyingAttrs["storefront_url"].(types.String); ok {
-				if !v.IsNull() {
-					assistedBuying["storefrontUrl"] = v.ValueString()
-				} else {
-					assistedBuying["storefrontUrl"] = nil
-				}
+			if v, ok := assistedBuyingAttrs["storefront_url"].(types.String); ok && !v.IsNull() {
+				assistedBuying["storefrontUrl"] = v.ValueString()
+			} else {
+				assistedBuying["storefrontUrl"] = nil
 			}
 
 			patchData["assistedBuying"] = assistedBuying
