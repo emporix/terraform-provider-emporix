@@ -47,3 +47,18 @@ type Metadata struct {
 	Mixins  map[string]string `json:"mixins,omitempty"`
 	Version int                `json:"version,omitempty"`
 }
+
+// PaymentMode represents a payment mode configuration
+type PaymentMode struct {
+	ID            string            `json:"id,omitempty"`
+	Code          string            `json:"code"`
+	Active        bool              `json:"active"`
+	Provider      string            `json:"provider"`
+	Configuration map[string]string `json:"configuration,omitempty"`
+}
+
+// PaymentModeUpdate represents the update payload for a payment mode
+type PaymentModeUpdate struct {
+	Active        bool              `json:"active"`
+	Configuration map[string]string `json:"configuration,omitempty"`
+}

@@ -266,3 +266,90 @@ func (c *EmporixClient) DeleteSiteMixin(ctx context.Context, siteCode string, mi
 
 	return nil
 }
+
+// CreatePaymentMode creates a new payment mode
+func (c *EmporixClient) CreatePaymentMode(ctx context.Context, paymentMode *PaymentMode) (*PaymentMode, error) {
+	path := fmt.Sprintf("/payment-gateway/%s/paymentmodes/config", strings.ToLower(c.Tenant))
+	resp, err := c.doRequest(ctx, "POST", path, paymentMode)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Read body (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var created PaymentMode
+	if err := json.Unmarshal(bodyBytes, &created); err != nil {
+		return nil, fmt.Errorf("error decoding response: %w", err)
+	}
+
+	return &created, nil
+}
+
+// GetPaymentMode retrieves a single payment mode by ID
+func (c *EmporixClient) GetPaymentMode(ctx context.Context, id string) (*PaymentMode, error) {
+	path := fmt.Sprintf("/payment-gateway/%s/paymentmodes/config/%s", strings.ToLower(c.Tenant), id)
+	resp, err := c.doRequest(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+
+	// Read body (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var paymentMode PaymentMode
+	if err := json.Unmarshal(bodyBytes, &paymentMode); err != nil {
+		return nil, fmt.Errorf("error decoding response: %w", err)
+	}
+
+	return &paymentMode, nil
+}
+
+// UpdatePaymentMode updates an existing payment mode
+func (c *EmporixClient) UpdatePaymentMode(ctx context.Context, id string, updateData *PaymentModeUpdate) (*PaymentMode, error) {
+	path := fmt.Sprintf("/payment-gateway/%s/paymentmodes/config/%s", strings.ToLower(c.Tenant), id)
+	resp, err := c.doRequest(ctx, "PUT", path, updateData)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Read body (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	// WORKAROUND: The API returns stale data in the PUT response.
+	// Do a separate GET request to fetch the actual updated state.
+	// This prevents "Provider produced inconsistent result after apply" errors.
+	tflog.Debug(ctx, "Update succeeded, fetching current state via GET (API returns stale data in PUT response)")
+
+	return c.GetPaymentMode(ctx, id)
+}
+
+// DeletePaymentMode deletes a payment mode
+func (c *EmporixClient) DeletePaymentMode(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/payment-gateway/%s/paymentmodes/config/%s", strings.ToLower(c.Tenant), id)
+	resp, err := c.doRequest(ctx, "DELETE", path, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Read body (already logged in doRequest)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent)
+}
