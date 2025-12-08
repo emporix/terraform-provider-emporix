@@ -353,3 +353,95 @@ func (c *EmporixClient) DeletePaymentMode(ctx context.Context, id string) error 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent)
 }
+
+// GetCountry retrieves a country by code
+func (c *EmporixClient) GetCountry(ctx context.Context, code string) (*Country, error) {
+	path := fmt.Sprintf("/country/%s/countries/%s", strings.ToLower(c.Tenant), code)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", c.ApiUrl+path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Version", "v2")
+
+	tflog.Debug(ctx, "API request", map[string]interface{}{
+		"method": "GET",
+		"url":    req.URL.String(),
+	})
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	tflog.Trace(ctx, "API response body", map[string]interface{}{
+		"body": string(bodyBytes),
+	})
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var country Country
+	if err := json.Unmarshal(bodyBytes, &country); err != nil {
+		return nil, fmt.Errorf("error decoding country response: %w", err)
+	}
+
+	return &country, nil
+}
+
+// UpdateCountry updates a country's active status
+func (c *EmporixClient) UpdateCountry(ctx context.Context, code string, updateData *CountryUpdate) (*Country, error) {
+	path := fmt.Sprintf("/country/%s/countries/%s", strings.ToLower(c.Tenant), code)
+
+	jsonBody, err := json.Marshal(updateData)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "PATCH", c.ApiUrl+path, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Version", "v2")
+
+	tflog.Debug(ctx, "API request", map[string]interface{}{
+		"method": "PATCH",
+		"url":    req.URL.String(),
+	})
+
+	tflog.Trace(ctx, "Request body", map[string]interface{}{
+		"body": string(jsonBody),
+	})
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	tflog.Debug(ctx, "API response", map[string]interface{}{
+		"status_code": resp.StatusCode,
+	})
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// PATCH returns 204 No Content, so fetch current state via GET
+	tflog.Debug(ctx, "Update succeeded, fetching current state via GET")
+
+	return c.GetCountry(ctx, code)
+}

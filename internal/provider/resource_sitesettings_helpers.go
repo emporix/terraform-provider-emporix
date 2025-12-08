@@ -45,6 +45,7 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 	diags.Append(model.ShipToCountries.ElementsAs(ctx, &shipToCountries, false)...)
 	site.ShipToCountries = shipToCountries
 
+
 	// Tax Calculation Address Type
 	if !model.TaxCalculationAddressType.IsNull() {
 		site.TaxCalculationAddressType = model.TaxCalculationAddressType.ValueString()

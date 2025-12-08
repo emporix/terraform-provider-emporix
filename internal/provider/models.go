@@ -45,7 +45,7 @@ type AssistedBuying struct {
 
 type Metadata struct {
 	Mixins  map[string]string `json:"mixins,omitempty"`
-	Version int                `json:"version,omitempty"`
+	Version int               `json:"version,omitempty"`
 }
 
 // PaymentMode represents a payment mode configuration
@@ -61,4 +61,18 @@ type PaymentMode struct {
 type PaymentModeUpdate struct {
 	Active        bool              `json:"active"`
 	Configuration map[string]string `json:"configuration,omitempty"`
+}
+
+// Country represents a country in Emporix
+type Country struct {
+	Code     string            `json:"code"`
+	Name     map[string]string `json:"name"`
+	Regions  []string          `json:"regions,omitempty"`
+	Active   bool              `json:"active"`
+	Metadata Metadata          `json:"metadata,omitempty"`
+}
+
+// CountryUpdate represents data for updating a country (only active field can be updated)
+type CountryUpdate struct {
+	Active *bool `json:"active,omitempty"`
 }
