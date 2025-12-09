@@ -12,7 +12,7 @@ setup:
 	@echo "Setup complete!"
 
 # Build the provider
-build:
+build: deps
 	go build -o terraform-provider-emporix
 
 # Install the provider locally for development

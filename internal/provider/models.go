@@ -69,7 +69,7 @@ type Country struct {
 	Name     map[string]string `json:"name"`
 	Regions  []string          `json:"regions,omitempty"`
 	Active   bool              `json:"active"`
-	Metadata Metadata          `json:"metadata,omitempty"`
+	Metadata *Metadata         `json:"metadata,omitempty"`
 }
 
 // CountryUpdate represents data for updating a country (only active field can be updated)

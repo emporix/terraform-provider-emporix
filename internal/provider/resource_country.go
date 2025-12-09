@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -33,6 +34,28 @@ type CountryResourceModel struct {
 	Name    types.Map    `tfsdk:"name"`
 	Regions types.List   `tfsdk:"regions"`
 	Active  types.Bool   `tfsdk:"active"`
+}
+
+// mapCountryToModel converts a Country API response to a CountryResourceModel
+func mapCountryToModel(ctx context.Context, country *Country, data *CountryResourceModel, diags *diag.Diagnostics) {
+	data.Code = types.StringValue(country.Code)
+	data.Active = types.BoolValue(country.Active)
+
+	// Convert name map to Terraform map
+	if country.Name != nil {
+		nameMapValue, d := types.MapValueFrom(ctx, types.StringType, country.Name)
+		diags.Append(d...)
+		data.Name = nameMapValue
+	}
+
+	// Convert regions to Terraform list
+	regions := country.Regions
+	if regions == nil {
+		regions = []string{}
+	}
+	regionList, d := types.ListValueFrom(ctx, types.StringType, regions)
+	diags.Append(d...)
+	data.Regions = regionList
 }
 
 func (r *CountryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -133,26 +156,7 @@ func (r *CountryResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Map API response to model
-	data.Code = types.StringValue(country.Code)
-	data.Active = types.BoolValue(country.Active)
-
-	// Convert name map to Terraform map
-	if country.Name != nil {
-		nameMapValue, diags := types.MapValueFrom(ctx, types.StringType, country.Name)
-		resp.Diagnostics.Append(diags...)
-		data.Name = nameMapValue
-	}
-
-	// Convert regions to Terraform list
-	if country.Regions != nil {
-		regionList, diags := types.ListValueFrom(ctx, types.StringType, country.Regions)
-		resp.Diagnostics.Append(diags...)
-		data.Regions = regionList
-	} else {
-		regionList, diags := types.ListValueFrom(ctx, types.StringType, []string{})
-		resp.Diagnostics.Append(diags...)
-		data.Regions = regionList
-	}
+	mapCountryToModel(ctx, country, &data, &resp.Diagnostics)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -177,26 +181,7 @@ func (r *CountryResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 
 	// Map API response to model
-	data.Code = types.StringValue(country.Code)
-	data.Active = types.BoolValue(country.Active)
-
-	// Convert name map to Terraform map
-	if country.Name != nil {
-		nameMapValue, diags := types.MapValueFrom(ctx, types.StringType, country.Name)
-		resp.Diagnostics.Append(diags...)
-		data.Name = nameMapValue
-	}
-
-	// Convert regions to Terraform list
-	if country.Regions != nil {
-		regionList, diags := types.ListValueFrom(ctx, types.StringType, country.Regions)
-		resp.Diagnostics.Append(diags...)
-		data.Regions = regionList
-	} else {
-		regionList, diags := types.ListValueFrom(ctx, types.StringType, []string{})
-		resp.Diagnostics.Append(diags...)
-		data.Regions = regionList
-	}
+	mapCountryToModel(ctx, country, &data, &resp.Diagnostics)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -228,25 +213,7 @@ func (r *CountryResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	// Map updated response to model
-	data.Active = types.BoolValue(country.Active)
-
-	// Convert name map to Terraform map
-	if country.Name != nil {
-		nameMapValue, diags := types.MapValueFrom(ctx, types.StringType, country.Name)
-		resp.Diagnostics.Append(diags...)
-		data.Name = nameMapValue
-	}
-
-	// Convert regions to Terraform list
-	if country.Regions != nil {
-		regionList, diags := types.ListValueFrom(ctx, types.StringType, country.Regions)
-		resp.Diagnostics.Append(diags...)
-		data.Regions = regionList
-	} else {
-		regionList, diags := types.ListValueFrom(ctx, types.StringType, []string{})
-		resp.Diagnostics.Append(diags...)
-		data.Regions = regionList
-	}
+	mapCountryToModel(ctx, country, &data, &resp.Diagnostics)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

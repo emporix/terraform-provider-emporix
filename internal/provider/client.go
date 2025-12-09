@@ -31,11 +31,7 @@ func NewEmporixClient(tenant, accessToken, apiUrl string) *EmporixClient {
 	}
 }
 
-func (c *EmporixClient) doRequest(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
-	return c.doRequestWithHeaders(ctx, method, path, body, nil)
-}
-
-func (c *EmporixClient) doRequestWithHeaders(ctx context.Context, method, path string, body interface{}, headers map[string]string) (*http.Response, error) {
+func (c *EmporixClient) doRequest(ctx context.Context, method, path string, body interface{}, headers map[string]string) (*http.Response, error) {
 	url := fmt.Sprintf("%s%s", c.ApiUrl, path)
 
 	var bodyReader io.Reader
@@ -163,7 +159,7 @@ func (c *EmporixClient) logResponseWithBody(ctx context.Context, statusCode int,
 
 func (c *EmporixClient) CreateSite(ctx context.Context, site *SiteSettings) error {
 	path := fmt.Sprintf("/site/%s/sites", strings.ToLower(c.Tenant))
-	resp, err := c.doRequest(ctx, "POST", path, site)
+	resp, err := c.doRequest(ctx, "POST", path, site, nil)
 	if err != nil {
 		return err
 	}
@@ -176,7 +172,7 @@ func (c *EmporixClient) CreateSite(ctx context.Context, site *SiteSettings) erro
 
 func (c *EmporixClient) GetSite(ctx context.Context, siteCode string) (*SiteSettings, error) {
 	path := fmt.Sprintf("/site/%s/sites/%s?expand=mixin:*", strings.ToLower(c.Tenant), siteCode)
-	resp, err := c.doRequest(ctx, "GET", path, nil)
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +198,7 @@ func (c *EmporixClient) GetSite(ctx context.Context, siteCode string) (*SiteSett
 
 func (c *EmporixClient) UpdateSite(ctx context.Context, siteCode string, patchData map[string]interface{}) error {
 	path := fmt.Sprintf("/site/%s/sites/%s", strings.ToLower(c.Tenant), siteCode)
-	resp, err := c.doRequest(ctx, "PATCH", path, patchData)
+	resp, err := c.doRequest(ctx, "PATCH", path, patchData, nil)
 	if err != nil {
 		return err
 	}
@@ -215,7 +211,7 @@ func (c *EmporixClient) UpdateSite(ctx context.Context, siteCode string, patchDa
 
 func (c *EmporixClient) DeleteSite(ctx context.Context, siteCode string) error {
 	path := fmt.Sprintf("/site/%s/sites/%s", strings.ToLower(c.Tenant), siteCode)
-	resp, err := c.doRequest(ctx, "DELETE", path, nil)
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -243,7 +239,7 @@ func (c *EmporixClient) PatchSiteMixins(ctx context.Context, siteCode string, mi
 		}
 	}
 
-	resp, err := c.doRequest(ctx, "PATCH", path, patchData)
+	resp, err := c.doRequest(ctx, "PATCH", path, patchData, nil)
 	if err != nil {
 		return err
 	}
@@ -261,7 +257,7 @@ func (c *EmporixClient) PatchSiteMixins(ctx context.Context, siteCode string, mi
 // DeleteSiteMixin deletes a specific mixin by name
 func (c *EmporixClient) DeleteSiteMixin(ctx context.Context, siteCode string, mixinName string) error {
 	path := fmt.Sprintf("/site/%s/sites/%s/mixins/%s", strings.ToLower(c.Tenant), siteCode, mixinName)
-	resp, err := c.doRequest(ctx, "DELETE", path, nil)
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -279,7 +275,7 @@ func (c *EmporixClient) DeleteSiteMixin(ctx context.Context, siteCode string, mi
 // CreatePaymentMode creates a new payment mode
 func (c *EmporixClient) CreatePaymentMode(ctx context.Context, paymentMode *PaymentMode) (*PaymentMode, error) {
 	path := fmt.Sprintf("/payment-gateway/%s/paymentmodes/config", strings.ToLower(c.Tenant))
-	resp, err := c.doRequest(ctx, "POST", path, paymentMode)
+	resp, err := c.doRequest(ctx, "POST", path, paymentMode, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +298,7 @@ func (c *EmporixClient) CreatePaymentMode(ctx context.Context, paymentMode *Paym
 // GetPaymentMode retrieves a single payment mode by ID
 func (c *EmporixClient) GetPaymentMode(ctx context.Context, id string) (*PaymentMode, error) {
 	path := fmt.Sprintf("/payment-gateway/%s/paymentmodes/config/%s", strings.ToLower(c.Tenant), id)
-	resp, err := c.doRequest(ctx, "GET", path, nil)
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +325,7 @@ func (c *EmporixClient) GetPaymentMode(ctx context.Context, id string) (*Payment
 // UpdatePaymentMode updates an existing payment mode
 func (c *EmporixClient) UpdatePaymentMode(ctx context.Context, id string, updateData *PaymentModeUpdate) (*PaymentMode, error) {
 	path := fmt.Sprintf("/payment-gateway/%s/paymentmodes/config/%s", strings.ToLower(c.Tenant), id)
-	resp, err := c.doRequest(ctx, "PUT", path, updateData)
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +348,7 @@ func (c *EmporixClient) UpdatePaymentMode(ctx context.Context, id string, update
 // DeletePaymentMode deletes a payment mode
 func (c *EmporixClient) DeletePaymentMode(ctx context.Context, id string) error {
 	path := fmt.Sprintf("/payment-gateway/%s/paymentmodes/config/%s", strings.ToLower(c.Tenant), id)
-	resp, err := c.doRequest(ctx, "DELETE", path, nil)
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -371,7 +367,7 @@ func (c *EmporixClient) GetCountry(ctx context.Context, code string) (*Country, 
 		"X-Version": "v2",
 	}
 
-	resp, err := c.doRequestWithHeaders(ctx, "GET", path, nil, headers)
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +396,7 @@ func (c *EmporixClient) UpdateCountry(ctx context.Context, code string, updateDa
 	}
 
 	// Add metadata.version to update data (required by API)
-	if country.Metadata.Version > 0 {
+	if country.Metadata != nil && country.Metadata.Version > 0 {
 		if updateData.Metadata == nil {
 			updateData.Metadata = &Metadata{}
 		}
@@ -413,7 +409,7 @@ func (c *EmporixClient) UpdateCountry(ctx context.Context, code string, updateDa
 		"X-Version": "v2",
 	}
 
-	resp, err := c.doRequestWithHeaders(ctx, "PATCH", path, updateData, headers)
+	resp, err := c.doRequest(ctx, "PATCH", path, updateData, headers)
 	if err != nil {
 		return nil, err
 	}
@@ -430,4 +426,3 @@ func (c *EmporixClient) UpdateCountry(ctx context.Context, code string, updateDa
 
 	return c.GetCountry(ctx, code)
 }
-

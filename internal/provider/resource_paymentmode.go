@@ -139,7 +139,7 @@ func (r *PaymentModeResource) Create(ctx context.Context, req resource.CreateReq
 	plan.Active = types.BoolValue(createdMode.Active)
 	plan.PaymentProvider = types.StringValue(createdMode.Provider)
 
-	if createdMode.Configuration != nil && len(createdMode.Configuration) > 0 {
+	if len(createdMode.Configuration) > 0 {
 		configMap, diags := types.MapValueFrom(ctx, types.StringType, createdMode.Configuration)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
@@ -188,7 +188,7 @@ func (r *PaymentModeResource) Read(ctx context.Context, req resource.ReadRequest
 	state.Active = types.BoolValue(paymentMode.Active)
 	state.PaymentProvider = types.StringValue(paymentMode.Provider)
 
-	if paymentMode.Configuration != nil && len(paymentMode.Configuration) > 0 {
+	if len(paymentMode.Configuration) > 0 {
 		configMap, diags := types.MapValueFrom(ctx, types.StringType, paymentMode.Configuration)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
@@ -245,7 +245,7 @@ func (r *PaymentModeResource) Update(ctx context.Context, req resource.UpdateReq
 	plan.Active = types.BoolValue(updatedMode.Active)
 	plan.PaymentProvider = types.StringValue(updatedMode.Provider)
 
-	if updatedMode.Configuration != nil && len(updatedMode.Configuration) > 0 {
+	if len(updatedMode.Configuration) > 0 {
 		configMap, diags := types.MapValueFrom(ctx, types.StringType, updatedMode.Configuration)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
