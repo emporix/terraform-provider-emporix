@@ -171,3 +171,42 @@ If Terraform can't find your provider, make sure:
 For issues related to:
 - The provider: Create an issue in this repository
 - Emporix API: Refer to [Emporix Developer Portal](https://developer.emporix.io)
+
+## Testing
+
+This provider includes comprehensive acceptance tests for all resources.
+
+### Quick Start
+
+```bash
+# Install dependencies
+go mod download
+
+# Set credentials
+export TF_ACC=1
+export EMPORIX_TENANT="your-test-tenant"
+export EMPORIX_CLIENT_ID="your-client-id"
+export EMPORIX_CLIENT_SECRET="your-client-secret"
+
+# Run all tests
+make testacc
+
+# Run specific resource tests
+make testacc-country
+make testacc-paymentmode
+make testacc-sitesettings
+```
+
+### Test Files
+
+- `internal/provider/resource_country_test.go` - Country resource tests
+- `internal/provider/resource_paymentmode_test.go` - Payment mode tests
+- `internal/provider/resource_sitesettings_test.go` - Site settings tests
+
+### Requirements
+
+- Go 1.21+
+- Valid Emporix test tenant and credentials
+- OAuth scopes: `site.site_read`, `site.site_manage`, `payment.payment_manage`, `payment.payment_read`, `country.country_read`, `country.country_manage`
+
+**Important:** Always use a test tenant, never production!
