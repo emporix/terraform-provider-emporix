@@ -33,11 +33,6 @@ The Terraform Plugin Framework is HashiCorp's recommended way to build providers
 3. First-time setup (regenerate go.sum with correct checksums):
 
 ```bash
-# Option 1: Use the setup script
-chmod +x scripts/setup.sh
-./scripts/setup.sh
-
-# Option 2: Manual setup
 rm -f go.sum
 go mod download
 go mod tidy
@@ -103,68 +98,6 @@ GOOS=windows GOARCH=amd64 go build -o terraform-provider-emporix_windows_amd64.e
 
 This provider is provided as-is for use with the Emporix platform.
 
-## Troubleshooting
-
-### Checksum Mismatch Error
-
-If you get an error like:
-```
-verifying github.com/hashicorp/terraform-plugin-framework@v1.4.2: checksum mismatch
-SECURITY ERROR
-```
-
-This happens because the go.sum file needs to be regenerated with the correct checksums for your system.
-
-**Solution:**
-```bash
-# Use the Makefile target
-make setup
-
-# Or manually
-rm -f go.sum
-go mod download
-go mod tidy
-
-# Then build
-make build
-```
-
-### "Unrecognized remote plugin message" Error
-
-If you get this error after running `terraform apply`:
-```
-failed to instantiate provider "registry.terraform.io/emporix/emporix" to obtain schema: Unrecognized remote plugin message
-```
-
-This usually means one of the following:
-
-1. **The provider wasn't rebuilt after changes**: Run `make clean && make install` to rebuild and reinstall
-2. **Old cached files**: Remove `.terraform` and `.terraform.lock.hcl`, then run `terraform init` again
-3. **Go dependencies issue**: Run `go mod download && go mod tidy` before building
-
-**Solution:**
-```bash
-# Clean everything
-make clean
-rm -rf .terraform .terraform.lock.hcl
-
-# Rebuild dependencies
-go mod download
-go mod tidy
-
-# Rebuild and reinstall
-make install
-
-# Reinitialize Terraform
-terraform init
-```
-
-### Provider Not Found
-
-If Terraform can't find your provider, make sure:
-1. The binary is named `terraform-provider-emporix` in the plugins directory
-2. It's in the correct path: `~/.terraform.d/plugins/registry.terraform.io/emporix/emporix/0.1.0/<OS_ARCH>/`
-3. Your Terraform configuration uses the correct source: `source = "emporix/emporix"`
 
 ## Support
 
@@ -179,8 +112,29 @@ This provider includes comprehensive acceptance tests for all resources.
 ### Quick Start
 
 ```bash
+# 1. Run automated setup
+make clean
+make setup
+
+# 2. Configure credentials
+# create .env.test file with credentials
+
+# 3. Load credentials and run tests
+source .env.test
+make testacc
+
+# Run specific resource tests
+make testacc-country
+make testacc-paymentmode
+make testacc-sitesettings
+```
+
+### Manual Setup (Alternative)
+
+```bash
 # Install dependencies
 go mod download
+go mod tidy
 
 # Set credentials
 export TF_ACC=1
@@ -188,13 +142,8 @@ export EMPORIX_TENANT="your-test-tenant"
 export EMPORIX_CLIENT_ID="your-client-id"
 export EMPORIX_CLIENT_SECRET="your-client-secret"
 
-# Run all tests
+# Run tests
 make testacc
-
-# Run specific resource tests
-make testacc-country
-make testacc-paymentmode
-make testacc-sitesettings
 ```
 
 ### Test Files
@@ -205,8 +154,19 @@ make testacc-sitesettings
 
 ### Requirements
 
-- Go 1.21+
+- Go 1.23+
 - Valid Emporix test tenant and credentials
 - OAuth scopes: `site.site_read`, `site.site_manage`, `payment.payment_manage`, `payment.payment_read`, `country.country_read`, `country.country_manage`
 
 **Important:** Always use a test tenant, never production!
+
+### Dependency Versions
+
+This provider uses the latest stable Terraform plugin dependencies (December 2024):
+- `terraform-plugin-framework v1.15.0`
+- `terraform-plugin-go v0.29.0`
+- `terraform-plugin-log v0.9.0`
+- `terraform-plugin-testing v1.14.0`
+
+**Requirements:**
+- Go 1.23 or higher (required by latest plugin packages)

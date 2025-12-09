@@ -30,9 +30,11 @@ func TestAccSiteSettingsResource_basic(t *testing.T) {
 			},
 			// ImportState testing
 			{
-				ResourceName:      "emporix_sitesettings.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:                         "emporix_sitesettings.test",
+				ImportState:                          true,
+				ImportStateId:                        code,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "code",
 			},
 			// Update and Read testing
 			{
@@ -172,6 +174,15 @@ resource "emporix_sitesettings" "test" {
   default_language = "en"
   languages        = ["en"]
   currency         = "USD"
+  ship_to_countries = ["US"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
 }
 `, code)
 }
@@ -186,6 +197,15 @@ resource "emporix_sitesettings" "test" {
   default_language = "en"
   languages        = ["en"]
   currency         = "USD"
+  ship_to_countries = ["US"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
 }
 `, code)
 }
@@ -200,6 +220,15 @@ resource "emporix_sitesettings" "test" {
   default_language = "en"
   languages        = ["en", "de", "fr"]
   currency         = "USD"
+  ship_to_countries = ["US"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
 }
 `, code)
 }
@@ -215,6 +244,15 @@ resource "emporix_sitesettings" "test" {
   languages            = ["en"]
   currency             = "USD"
   available_currencies = ["USD", "EUR", "GBP"]
+  ship_to_countries    = ["US"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
 }
 `, code)
 }
@@ -230,6 +268,14 @@ resource "emporix_sitesettings" "test" {
   languages         = ["en"]
   currency          = "USD"
   ship_to_countries = ["US", "CA", "MX"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
 }
 `, code)
 }
@@ -245,6 +291,14 @@ resource "emporix_sitesettings" "test" {
   languages         = ["en"]
   currency          = "USD"
   ship_to_countries = ["US", "CA"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
 }
 `, code)
 }
@@ -260,6 +314,15 @@ resource "emporix_sitesettings" "test" {
   languages        = ["en"]
   currency         = "USD"
   includes_tax     = %[2]t
+  ship_to_countries = ["US"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
 }
 `, code, includesTax)
 }

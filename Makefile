@@ -73,7 +73,7 @@ test-coverage:
 	go test -v -cover ./...
 
 # Run acceptance tests (requires TF_ACC=1 and credentials)
-testacc:
+testacc: deps
 	TF_ACC=1 go test ./internal/provider -v -timeout 30m
 
 # Run specific acceptance test
@@ -82,17 +82,17 @@ testacc-run:
 	@echo "Example: make testacc-run TEST=TestAccSiteSettings"
 
 # Run acceptance tests for a specific resource
-testacc-sitesettings:
+testacc-sitesettings: deps
 	TF_ACC=1 go test ./internal/provider -v -run TestAccSiteSettings -timeout 30m
 
-testacc-paymentmode:
+testacc-paymentmode: deps
 	TF_ACC=1 go test ./internal/provider -v -run TestAccPaymentMode -timeout 30m
 
-testacc-country:
+testacc-country: deps
 	TF_ACC=1 go test ./internal/provider -v -run TestAccCountry -timeout 30m
 
 # Run acceptance tests with coverage
-testacc-coverage:
+testacc-coverage: deps
 	TF_ACC=1 go test ./internal/provider -v -cover -coverprofile=coverage.out -timeout 30m
 
 # View coverage report

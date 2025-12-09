@@ -23,9 +23,11 @@ func TestAccCountryResource_basic(t *testing.T) {
 			},
 			// ImportState testing
 			{
-				ResourceName:      "emporix_country.test",
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:                         "emporix_country.test",
+				ImportState:                          true,
+				ImportStateId:                        "US",
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "code",
 			},
 			// Update and Read testing
 			{
