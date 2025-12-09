@@ -13,7 +13,7 @@ terraform {
 provider "emporix" {
   tenant  = var.emporix_tenant
   api_url = var.emporix_api_url
-  
+
   # Use client credentials
   client_id     = var.emporix_client_id
   client_secret = var.emporix_client_secret
@@ -45,32 +45,27 @@ variable "emporix_client_secret" {
   sensitive   = true
 }
 
-# IMPORTANT: Countries must be imported before they can be managed
-# Run these commands first:
-#   terraform import emporix_country.usa US
-#   terraform import emporix_country.canada CA
-#   terraform import emporix_country.uk GB
-#   terraform import emporix_country.germany DE
+# IMPORTANT: No import required!
+# Just add the resources and Terraform will automatically adopt existing countries
 
-# Example 1: Active country (United States)
+# Example 1: Active country (United States) - using default
 resource "emporix_country" "usa" {
-  code   = "US"
-  active = true
+  code = "US"
+  # active defaults to true, so no need to specify
 }
 
-# Example 2: Active country (Canada)
+# Example 2: Active country (Canada) - explicitly set
 resource "emporix_country" "canada" {
   code   = "CA"
   active = true
 }
 
-# Example 3: Active country (United Kingdom)
+# Example 3: Active country (United Kingdom) - using default
 resource "emporix_country" "uk" {
-  code   = "GB"
-  active = true
+  code = "GB"
 }
 
-# Example 4: Inactive country (Germany)
+# Example 4: Inactive country (Germany) - explicitly set to false
 resource "emporix_country" "germany" {
   code   = "DE"
   active = false

@@ -42,12 +42,13 @@ func (r *CountryResource) Metadata(ctx context.Context, req resource.MetadataReq
 func (r *CountryResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a country's active status in Emporix. " +
-			"**Important**: Countries are pre-populated by Emporix and cannot be created or deleted. " +
-			"This resource only manages the `active` field. You must import existing countries before managing them.",
+			"Countries are pre-populated by Emporix. " +
+			"When you add this resource, it automatically adopts the existing country and allows you to manage its active status. " +
+			"When you remove the resource from Terraform, the country is deactivated (active = false).",
 
 		Attributes: map[string]schema.Attribute{
 			"code": schema.StringAttribute{
-				MarkdownDescription: "Country code (ISO 3166-1 alpha-2, 2-letter code). Cannot be changed after import.",
+				MarkdownDescription: "Country code (ISO 3166-1 alpha-2, 2-letter code). Cannot be changed after creation.",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -64,7 +65,7 @@ func (r *CountryResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Computed:            true,
 			},
 			"active": schema.BoolAttribute{
-				MarkdownDescription: "Whether the country is active for the tenant. Only active countries are visible in the system.",
+				MarkdownDescription: "Whether the country is active for the tenant. Only active countries are visible in the system. Defaults to true.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(true),
@@ -91,13 +92,69 @@ func (r *CountryResource) Configure(ctx context.Context, req resource.ConfigureR
 }
 
 func (r *CountryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	// Countries cannot be created - they must be imported
-	resp.Diagnostics.AddError(
-		"Cannot Create Country",
-		"Countries are pre-populated by Emporix and cannot be created. "+
-			"Please import an existing country using: terraform import emporix_country.<name> <country_code>\n\n"+
-			"Example: terraform import emporix_country.usa US",
-	)
+	var data CountryResourceModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	tflog.Debug(ctx, "Creating (adopting) country", map[string]interface{}{
+		"code":   data.Code.ValueString(),
+		"active": data.Active.ValueBool(),
+	})
+
+	// Countries are pre-populated by Emporix, so we "adopt" the existing country
+	// First, fetch the current state
+	country, err := r.client.GetCountry(ctx, data.Code.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read country, got error: %s", err))
+		return
+	}
+
+	// If user specified active status and it differs from current, update it
+	if !data.Active.IsNull() && !data.Active.IsUnknown() && data.Active.ValueBool() != country.Active {
+		tflog.Debug(ctx, "Updating country active status during create", map[string]interface{}{
+			"code":        data.Code.ValueString(),
+			"from_active": country.Active,
+			"to_active":   data.Active.ValueBool(),
+		})
+
+		active := data.Active.ValueBool()
+		updateData := &CountryUpdate{
+			Active: &active,
+		}
+
+		country, err = r.client.UpdateCountry(ctx, data.Code.ValueString(), updateData)
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update country, got error: %s", err))
+			return
+		}
+	}
+
+	// Map API response to model
+	data.Code = types.StringValue(country.Code)
+	data.Active = types.BoolValue(country.Active)
+
+	// Convert name map to Terraform map
+	if country.Name != nil {
+		nameMapValue, diags := types.MapValueFrom(ctx, types.StringType, country.Name)
+		resp.Diagnostics.Append(diags...)
+		data.Name = nameMapValue
+	}
+
+	// Convert regions to Terraform list
+	if country.Regions != nil {
+		regionList, diags := types.ListValueFrom(ctx, types.StringType, country.Regions)
+		resp.Diagnostics.Append(diags...)
+		data.Regions = regionList
+	} else {
+		regionList, diags := types.ListValueFrom(ctx, types.StringType, []string{})
+		resp.Diagnostics.Append(diags...)
+		data.Regions = regionList
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *CountryResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -125,36 +182,18 @@ func (r *CountryResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	// Convert name map to Terraform map
 	if country.Name != nil {
-		nameMap := make(map[string]types.String)
-		for k, v := range country.Name {
-			nameMap[k] = types.StringValue(v)
-		}
-		nameMapValue, diags := types.MapValue(types.StringType, map[string]types.Value{})
-		resp.Diagnostics.Append(diags...)
-		for k, v := range nameMap {
-			nameMapValue.Elements()[k] = v
-		}
-		// Recreate the map properly
-		nameElements := make(map[string]types.Value)
-		for k, v := range nameMap {
-			nameElements[k] = v
-		}
-		nameMapValue, diags = types.MapValue(types.StringType, nameElements)
+		nameMapValue, diags := types.MapValueFrom(ctx, types.StringType, country.Name)
 		resp.Diagnostics.Append(diags...)
 		data.Name = nameMapValue
 	}
 
 	// Convert regions to Terraform list
 	if country.Regions != nil {
-		regionElements := make([]types.Value, len(country.Regions))
-		for i, region := range country.Regions {
-			regionElements[i] = types.StringValue(region)
-		}
-		regionList, diags := types.ListValue(types.StringType, regionElements)
+		regionList, diags := types.ListValueFrom(ctx, types.StringType, country.Regions)
 		resp.Diagnostics.Append(diags...)
 		data.Regions = regionList
 	} else {
-		regionList, diags := types.ListValue(types.StringType, []types.Value{})
+		regionList, diags := types.ListValueFrom(ctx, types.StringType, []string{})
 		resp.Diagnostics.Append(diags...)
 		data.Regions = regionList
 	}
@@ -193,26 +232,18 @@ func (r *CountryResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	// Convert name map to Terraform map
 	if country.Name != nil {
-		nameElements := make(map[string]types.Value)
-		for k, v := range country.Name {
-			nameElements[k] = types.StringValue(v)
-		}
-		nameMapValue, diags := types.MapValue(types.StringType, nameElements)
+		nameMapValue, diags := types.MapValueFrom(ctx, types.StringType, country.Name)
 		resp.Diagnostics.Append(diags...)
 		data.Name = nameMapValue
 	}
 
 	// Convert regions to Terraform list
 	if country.Regions != nil {
-		regionElements := make([]types.Value, len(country.Regions))
-		for i, region := range country.Regions {
-			regionElements[i] = types.StringValue(region)
-		}
-		regionList, diags := types.ListValue(types.StringType, regionElements)
+		regionList, diags := types.ListValueFrom(ctx, types.StringType, country.Regions)
 		resp.Diagnostics.Append(diags...)
 		data.Regions = regionList
 	} else {
-		regionList, diags := types.ListValue(types.StringType, []types.Value{})
+		regionList, diags := types.ListValueFrom(ctx, types.StringType, []string{})
 		resp.Diagnostics.Append(diags...)
 		data.Regions = regionList
 	}
@@ -221,7 +252,6 @@ func (r *CountryResource) Update(ctx context.Context, req resource.UpdateRequest
 }
 
 func (r *CountryResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	// Countries cannot be deleted - just remove from state
 	var data CountryResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -229,12 +259,23 @@ func (r *CountryResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	tflog.Info(ctx, "Country removed from Terraform state (countries cannot be deleted from Emporix)", map[string]interface{}{
+	tflog.Info(ctx, "Deactivating country", map[string]interface{}{
 		"code": data.Code.ValueString(),
 	})
 
-	// Note: We don't call any API here because countries cannot be deleted
-	// Terraform will simply remove it from state
+	// Deactivate the country (set active = false)
+	active := false
+	updateData := &CountryUpdate{
+		Active: &active,
+	}
+
+	_, err := r.client.UpdateCountry(ctx, data.Code.ValueString(), updateData)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to deactivate country, got error: %s", err))
+		return
+	}
+
+	// Country is now deactivated and will be removed from Terraform state
 }
 
 func (r *CountryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

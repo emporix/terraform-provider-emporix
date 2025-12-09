@@ -32,6 +32,10 @@ func NewEmporixClient(tenant, accessToken, apiUrl string) *EmporixClient {
 }
 
 func (c *EmporixClient) doRequest(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
+	return c.doRequestWithHeaders(ctx, method, path, body, nil)
+}
+
+func (c *EmporixClient) doRequestWithHeaders(ctx context.Context, method, path string, body interface{}, headers map[string]string) (*http.Response, error) {
 	url := fmt.Sprintf("%s%s", c.ApiUrl, path)
 
 	var bodyReader io.Reader
@@ -53,6 +57,11 @@ func (c *EmporixClient) doRequest(ctx context.Context, method, path string, body
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.AccessToken))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "*/*")
+
+	// Add custom headers if provided
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 
 	// Log request
 	c.logRequest(ctx, req, bodyBytes)
@@ -358,31 +367,17 @@ func (c *EmporixClient) DeletePaymentMode(ctx context.Context, id string) error 
 func (c *EmporixClient) GetCountry(ctx context.Context, code string) (*Country, error) {
 	path := fmt.Sprintf("/country/%s/countries/%s", strings.ToLower(c.Tenant), code)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", c.ApiUrl+path, nil)
-	if err != nil {
-		return nil, err
+	headers := map[string]string{
+		"X-Version": "v2",
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Version", "v2")
-
-	tflog.Debug(ctx, "API request", map[string]interface{}{
-		"method": "GET",
-		"url":    req.URL.String(),
-	})
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequestWithHeaders(ctx, "GET", path, nil, headers)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	tflog.Trace(ctx, "API response body", map[string]interface{}{
-		"body": string(bodyBytes),
-	})
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -398,43 +393,33 @@ func (c *EmporixClient) GetCountry(ctx context.Context, code string) (*Country, 
 
 // UpdateCountry updates a country's active status
 func (c *EmporixClient) UpdateCountry(ctx context.Context, code string, updateData *CountryUpdate) (*Country, error) {
+	// First, get current country to retrieve metadata.version (required for PATCH)
+	country, err := c.GetCountry(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("error getting country before update: %w", err)
+	}
+
+	// Add metadata.version to update data (required by API)
+	if country.Metadata.Version > 0 {
+		if updateData.Metadata == nil {
+			updateData.Metadata = &Metadata{}
+		}
+		updateData.Metadata.Version = country.Metadata.Version
+	}
+
 	path := fmt.Sprintf("/country/%s/countries/%s", strings.ToLower(c.Tenant), code)
 
-	jsonBody, err := json.Marshal(updateData)
-	if err != nil {
-		return nil, err
+	headers := map[string]string{
+		"X-Version": "v2",
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PATCH", c.ApiUrl+path, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Version", "v2")
-
-	tflog.Debug(ctx, "API request", map[string]interface{}{
-		"method": "PATCH",
-		"url":    req.URL.String(),
-	})
-
-	tflog.Trace(ctx, "Request body", map[string]interface{}{
-		"body": string(jsonBody),
-	})
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doRequestWithHeaders(ctx, "PATCH", path, updateData, headers)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	tflog.Debug(ctx, "API response", map[string]interface{}{
-		"status_code": resp.StatusCode,
-	})
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
 		return nil, err
@@ -445,3 +430,4 @@ func (c *EmporixClient) UpdateCountry(ctx context.Context, code string, updateDa
 
 	return c.GetCountry(ctx, code)
 }
+

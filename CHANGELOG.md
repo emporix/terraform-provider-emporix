@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **New Resource: emporix_country** - Manage country active status
+  - Read and Update operations (countries are pre-populated, cannot be created/deleted)
+  - Only `active` field can be modified
+  - Supports ISO 3166-1 alpha-2 country codes (2-letter codes)
+
 - **New Resource: emporix_paymentmode** - Manage payment mode configurations
   - Full CRUD operations support (Create, Read, Update, Delete)
   - Support for multiple payment providers:

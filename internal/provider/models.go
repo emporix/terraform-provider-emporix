@@ -74,5 +74,6 @@ type Country struct {
 
 // CountryUpdate represents data for updating a country (only active field can be updated)
 type CountryUpdate struct {
-	Active *bool `json:"active,omitempty"`
+	Active   *bool     `json:"active,omitempty"`
+	Metadata *Metadata `json:"metadata,omitempty"`
 }
