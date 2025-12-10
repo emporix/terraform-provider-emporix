@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2024-12-08
+
+### Added
+
+- **New Resource: emporix_country** - Manage country active status
+  - Read and Update operations (countries are pre-populated, cannot be created/deleted)
+  - Only `active` field can be modified
+  - Supports ISO 3166-1 alpha-2 country codes (2-letter codes)
+
+- **New Resource: emporix_paymentmode** - Manage payment mode configurations
+  - Full CRUD operations support (Create, Read, Update, Delete)
+  - Support for multiple payment providers:
+    - INVOICE - Simple invoice payment
+    - CASH_ON_DELIVERY - Cash on delivery payment
+
+[0.2.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.2.0
+
 ## [0.1.2] - 2024-12-05
 
 ### Added

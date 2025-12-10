@@ -28,7 +28,7 @@ func generateAccessToken(ctx context.Context, apiUrl, clientId, clientSecret, sc
 	formData.Set("client_id", clientId)
 	formData.Set("client_secret", clientSecret)
 	formData.Set("grant_type", "client_credentials")
-	
+
 	// Only add scope if provided
 	if scope != "" {
 		formData.Set("scope", scope)
