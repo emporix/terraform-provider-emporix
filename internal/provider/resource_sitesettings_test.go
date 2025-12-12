@@ -1,11 +1,13 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccSiteSettingsResource_basic(t *testing.T) {
@@ -14,6 +16,7 @@ func TestAccSiteSettingsResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSiteSettingsDestroy,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
@@ -55,6 +58,7 @@ func TestAccSiteSettingsResource_multipleLanguages(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSiteSettingsDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSiteSettingsResourceConfigMultiLanguage(code),
@@ -74,6 +78,7 @@ func TestAccSiteSettingsResource_multipleCurrencies(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSiteSettingsDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSiteSettingsResourceConfigMultiCurrency(code),
@@ -93,6 +98,7 @@ func TestAccSiteSettingsResource_shipToCountries(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSiteSettingsDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSiteSettingsResourceConfigWithCountries(code),
@@ -119,6 +125,7 @@ func TestAccSiteSettingsResource_includesTax(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSiteSettingsDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSiteSettingsResourceConfigWithTax(code, true),
@@ -146,6 +153,7 @@ func TestAccSiteSettingsResource_requiresReplace(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSiteSettingsDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSiteSettingsResourceConfigBasic(code1),
@@ -325,4 +333,37 @@ resource "emporix_sitesettings" "test" {
   }
 }
 `, code, includesTax)
+}
+
+// testAccCheckSiteSettingsDestroy verifies that site settings have been deleted
+func testAccCheckSiteSettingsDestroy(s *terraform.State) error {
+	ctx := context.Background()
+
+	// Get configured client
+	client, err := getTestClient()
+	if err != nil {
+		return fmt.Errorf("failed to get test client: %w", err)
+	}
+
+	// Iterate through all resources in state
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "emporix_sitesettings" {
+			continue
+		}
+
+		code := rs.Primary.Attributes["code"]
+
+		// Try to get the site
+		site, err := client.GetSite(ctx, code)
+
+		// If we get a 404 or the site is nil, that's what we want
+		if err != nil || site == nil {
+			continue
+		}
+
+		// If site still exists, that's an error
+		return fmt.Errorf("site settings %s still exists after destroy", code)
+	}
+
+	return nil
 }

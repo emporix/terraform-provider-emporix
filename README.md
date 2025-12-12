@@ -28,25 +28,66 @@ The Terraform Plugin Framework is HashiCorp's recommended way to build providers
 
 ## Building the Provider
 
-1. Clone the repository
-2. Navigate to the provider directory
-3. First-time setup (regenerate go.sum with correct checksums):
+**⚠️ IMPORTANT:** After extracting the provider, run setup first to initialize the module dependencies.
+
+### Quick Start
 
 ```bash
-rm -f go.sum
-go mod download
-go mod tidy
+# 1. First-time setup (required after extracting)
+make setup
+
+# 2. Build the provider
+make build
+
+# 3. Install locally for development
+make install
 ```
 
-4. Build the provider:
+### Manual Build (without Makefile)
 
 ```bash
+# 1. Initialize module dependencies
+go mod tidy
+
+# 2. Build
 go build -o terraform-provider-emporix
+
+# 3. Install (optional)
+OS_ARCH=$(go env GOOS)_$(go env GOARCH)
+mkdir -p ~/.terraform.d/plugins/registry.terraform.io/emporix/emporix/0.1.0/${OS_ARCH}
+cp terraform-provider-emporix ~/.terraform.d/plugins/registry.terraform.io/emporix/emporix/0.1.0/${OS_ARCH}/
+```
+
+### Troubleshooting Build Issues
+
+If you see an error like `package terraform-provider-emporix/internal/resources is not in std`:
+
+```bash
+# Quick fix
+make setup
+make build
+
+# Or manually
+go mod tidy && go build
 ```
 
 ## Installing the Provider Locally
 
-For local development, you can install the provider in your local Terraform plugins directory:
+For local development, the easiest way is to use the Makefile:
+
+```bash
+make install
+```
+
+This will:
+1. Build the provider
+2. Detect your OS and architecture
+3. Install to the correct Terraform plugins directory
+4. Set proper permissions
+
+### Manual Installation
+
+If you prefer to install manually:
 
 ```bash
 # Build the provider
@@ -60,11 +101,9 @@ mkdir -p ~/.terraform.d/plugins/registry.terraform.io/emporix/emporix/0.1.0/${OS
 
 # Copy the provider
 cp terraform-provider-emporix ~/.terraform.d/plugins/registry.terraform.io/emporix/emporix/0.1.0/${OS_ARCH}/
-```
 
-Or use the Makefile which handles this automatically:
-```bash
-make install
+# Make it executable
+chmod +x ~/.terraform.d/plugins/registry.terraform.io/emporix/emporix/0.1.0/${OS_ARCH}/terraform-provider-emporix
 ```
 
 Common OS/Architecture combinations:
@@ -72,6 +111,7 @@ Common OS/Architecture combinations:
 - macOS Intel: `darwin_amd64`
 - macOS Apple Silicon: `darwin_arm64`
 - Windows: `windows_amd64`
+
 
 ## Development
 
@@ -145,12 +185,6 @@ export EMPORIX_CLIENT_SECRET="your-client-secret"
 # Run tests
 make testacc
 ```
-
-### Test Files
-
-- `internal/provider/resource_country_test.go` - Country resource tests
-- `internal/provider/resource_paymentmode_test.go` - Payment mode tests
-- `internal/provider/resource_sitesettings_test.go` - Site settings tests
 
 ### Requirements
 

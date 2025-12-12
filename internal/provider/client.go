@@ -426,3 +426,126 @@ func (c *EmporixClient) UpdateCountry(ctx context.Context, code string, updateDa
 
 	return c.GetCountry(ctx, code)
 }
+
+// CreateCurrency creates a new currency
+func (c *EmporixClient) CreateCurrency(ctx context.Context, currency *CurrencyCreate) (*Currency, error) {
+	path := fmt.Sprintf("/currency/%s/currencies", strings.ToLower(c.Tenant))
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "POST", path, currency, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	// API may not return complete data in CREATE response (especially when using Content-Language: *)
+	// Always fetch the currency after creation to get complete state with all translations
+	var createdCurrency Currency
+	if err := json.Unmarshal(bodyBytes, &createdCurrency); err != nil {
+		return nil, fmt.Errorf("error decoding currency response: %w", err)
+	}
+
+	tflog.Debug(ctx, "Currency created, fetching complete state via GET")
+
+	// Fetch complete currency data with all translations
+	return c.GetCurrency(ctx, createdCurrency.Code)
+}
+
+// GetCurrency retrieves a currency by code
+func (c *EmporixClient) GetCurrency(ctx context.Context, code string) (*Currency, error) {
+	path := fmt.Sprintf("/currency/%s/currencies/%s", strings.ToLower(c.Tenant), code)
+
+	// Always use Accept-Language: * to retrieve all translations
+	headers := map[string]string{
+		"Accept-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var currency Currency
+	if err := json.Unmarshal(bodyBytes, &currency); err != nil {
+		return nil, fmt.Errorf("error decoding currency response: %w", err)
+	}
+
+	return &currency, nil
+}
+
+// UpdateCurrency updates a currency
+func (c *EmporixClient) UpdateCurrency(ctx context.Context, code string, updateData *CurrencyUpdate) (*Currency, error) {
+	// First, get current currency to retrieve metadata.version (required for PUT)
+	currency, err := c.GetCurrency(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("error getting currency before update: %w", err)
+	}
+
+	// Add metadata.version to update data (required by API)
+	if currency.Metadata != nil && currency.Metadata.Version > 0 {
+		if updateData.Metadata == nil {
+			updateData.Metadata = &Metadata{}
+		}
+		updateData.Metadata.Version = currency.Metadata.Version
+	}
+
+	path := fmt.Sprintf("/currency/%s/currencies/%s", strings.ToLower(c.Tenant), code)
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// PUT returns 204 No Content, so fetch current state via GET
+	tflog.Debug(ctx, "Update succeeded, fetching current state via GET")
+
+	return c.GetCurrency(ctx, code)
+}
+
+// DeleteCurrency deletes a currency by code
+func (c *EmporixClient) DeleteCurrency(ctx context.Context, code string) error {
+	path := fmt.Sprintf("/currency/%s/currencies/%s", strings.ToLower(c.Tenant), code)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
