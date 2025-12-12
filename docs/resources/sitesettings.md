@@ -22,7 +22,7 @@ resource "emporix_sitesettings" "us_site" {
   languages        = ["en", "es"]
   currency         = "USD"
   ship_to_countries = ["US"]
-
+  
   home_base = {
     address = {
       country  = "US"

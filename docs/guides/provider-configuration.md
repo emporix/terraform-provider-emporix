@@ -14,14 +14,36 @@ This guide explains how to configure the Emporix Terraform Provider for managing
 Before configuring the provider, you need:
 
 1. **Emporix Account** - An active Emporix tenant
-2. **API Keys** - OAuth2 client credentials or access token
+2. **API Credentials** - OAuth2 client credentials or access token
 3. **Terraform** - Version 1.0 or later
 
 ## Getting Your Credentials
 
-### Step 1: Create Tenant
+### Step 1: Access Emporix Management Console
 
-Follow the instructions: https://developer.emporix.io/ce/getting-started/creating-a-tenant
+Log in to your Emporix Management Console at:
+```
+https://management.emporix.io
+```
+
+### Step 2: Create OAuth2 Client
+
+1. Navigate to **Settings** → **API Clients**
+2. Click **Create New Client**
+3. Configure the client:
+   - **Name**: "Terraform Provider"
+   - **Grant Type**: Client Credentials
+   - **Scopes**: Select required scopes for your resources
+4. Save and note down:
+   - **Client ID**: Your client identifier
+   - **Client Secret**: Your client secret (shown only once!)
+   - **Tenant**: Your tenant identifier
+
+### Step 3: Note Your Tenant Name
+
+Your tenant name is visible in the Management Console URL or in your account settings.
+
+Example: `https://api.emporix.io/YOUR_TENANT/...`
 
 ## Provider Configuration
 
@@ -33,8 +55,8 @@ The simplest configuration using client credentials (recommended):
 terraform {
   required_providers {
     emporix = {
-      source  = "emporix/emporix"
-      version = "<provider version>"
+      source  = "YOUR_NAMESPACE/emporix"
+      version = "~> 0.1.0"
     }
   }
 }
@@ -152,7 +174,18 @@ provider "emporix" {
 }
 ```
 
-### Option 3: Secrets Manager
+### Option 3: Terraform Cloud/Enterprise
+
+For teams using Terraform Cloud or Enterprise:
+
+1. Navigate to your workspace
+2. Go to **Variables**
+3. Add sensitive variables:
+   - `emporix_tenant`
+   - `emporix_client_id` (mark as sensitive)
+   - `emporix_client_secret` (mark as sensitive)
+
+### Option 4: Secrets Manager
 
 Use a secrets manager (AWS Secrets Manager, HashiCorp Vault, etc.):
 
@@ -379,12 +412,23 @@ terraform:
 - If using `access_token`: Generate a new token
 - If using client credentials: Provider should auto-refresh (check credentials)
 
+### Invalid Tenant
+
+**Error:** `Invalid tenant`
+
+**Solutions:**
+1. Verify tenant name in Management Console
+2. Check for typos in tenant name
+3. Ensure tenant is active
+
 ### Missing Permissions
 
 **Error:** `Insufficient permissions`
 
 **Solutions:**
-1. Check credentials scopes in Developer Portal (https://app.emporix.io)
+1. Check OAuth2 client scopes in Management Console
+2. Ensure client has access to required resources
+3. Verify user permissions if using delegated access
 
 ## Best Practices
 
@@ -427,12 +471,13 @@ terraform apply -var-file=prod.tfvars
 
 ## Next Steps
 
-- Explore [Resources Documentation](../resources/sitesettings.md)
-- Review [Examples](https://github.com/emporix/terraform-provider-emporix/tree/master/examples)
-- Check [Emporix API Documentation](https://developer.emporix.io)
+- Explore [Resource Documentation](../resources/sitesettings.md)
+- Review [Examples](https://github.com/YOUR_NAMESPACE/terraform-provider-emporix/tree/main/examples)
+- Check [API Documentation](https://docs.emporix.io)
 
 ## Support
 
 For issues or questions:
-- Provider Issues: support@emporix.com
-- [Emporix API Documentation](https://developer.emporix.io)
+- Provider Issues: GitHub Issues
+- Emporix API: [Emporix Support](https://support.emporix.io)
+- Documentation: [Emporix Docs](https://docs.emporix.io)

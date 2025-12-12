@@ -549,3 +549,102 @@ func (c *EmporixClient) DeleteCurrency(ctx context.Context, code string) error {
 
 	return nil
 }
+
+// CreateTenantConfiguration creates a new tenant configuration
+func (c *EmporixClient) CreateTenantConfiguration(ctx context.Context, config *TenantConfigurationCreate) (*TenantConfiguration, error) {
+	path := fmt.Sprintf("/configuration/%s/configurations", strings.ToLower(c.Tenant))
+
+	// Wrap in array since API expects array
+	configs := []TenantConfigurationCreate{*config}
+
+	resp, err := c.doRequest(ctx, "POST", path, configs, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	// API returns array, we need the first element
+	var createdConfigs []TenantConfiguration
+	if err := json.Unmarshal(bodyBytes, &createdConfigs); err != nil {
+		return nil, fmt.Errorf("error decoding tenant configuration response: %w", err)
+	}
+
+	if len(createdConfigs) == 0 {
+		return nil, fmt.Errorf("API returned empty array")
+	}
+
+	return &createdConfigs[0], nil
+}
+
+// GetTenantConfiguration retrieves a tenant configuration by key
+func (c *EmporixClient) GetTenantConfiguration(ctx context.Context, key string) (*TenantConfiguration, error) {
+	path := fmt.Sprintf("/configuration/%s/configurations/%s", strings.ToLower(c.Tenant), key)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var config TenantConfiguration
+	if err := json.Unmarshal(bodyBytes, &config); err != nil {
+		return nil, fmt.Errorf("error decoding tenant configuration: %w", err)
+	}
+
+	return &config, nil
+}
+
+// UpdateTenantConfiguration updates a tenant configuration
+func (c *EmporixClient) UpdateTenantConfiguration(ctx context.Context, key string, updateData *TenantConfigurationUpdate) (*TenantConfiguration, error) {
+	path := fmt.Sprintf("/configuration/%s/configurations/%s", strings.ToLower(c.Tenant), key)
+
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var config TenantConfiguration
+	if err := json.Unmarshal(bodyBytes, &config); err != nil {
+		return nil, fmt.Errorf("error decoding tenant configuration: %w", err)
+	}
+
+	return &config, nil
+}
+
+// DeleteTenantConfiguration deletes a tenant configuration by key
+func (c *EmporixClient) DeleteTenantConfiguration(ctx context.Context, key string) error {
+	path := fmt.Sprintf("/configuration/%s/configurations/%s", strings.ToLower(c.Tenant), key)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}

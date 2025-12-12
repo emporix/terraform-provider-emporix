@@ -71,6 +71,8 @@ make build
 go mod tidy && go build
 ```
 
+See [BUILD_TROUBLESHOOTING.md](BUILD_TROUBLESHOOTING.md) for more details.
+
 ## Installing the Provider Locally
 
 For local development, the easiest way is to use the Makefile:
@@ -112,6 +114,121 @@ Common OS/Architecture combinations:
 - macOS Apple Silicon: `darwin_arm64`
 - Windows: `windows_amd64`
 
+## Available Resources
+
+The provider currently supports the following Emporix resources:
+
+### `emporix_currency`
+Manage currencies in your Emporix tenant.
+
+**Example:**
+```hcl
+resource "emporix_currency" "usd" {
+  code = "USD"
+}
+
+resource "emporix_currency" "eur" {
+  code = "EUR"
+}
+```
+
+**Features:**
+- ISO-4217 compliant currency codes (3-letter uppercase)
+- Auto-populated currency names in multiple languages
+- Import support by currency code
+
+**Documentation:** See `examples/currency/` and `MANUAL_TESTING_CURRENCY.md`
+
+---
+
+### `emporix_country`
+Activate or deactivate countries in your Emporix tenant.
+
+**Example:**
+```hcl
+resource "emporix_country" "us" {
+  code   = "US"
+  active = true
+}
+
+resource "emporix_country" "ca" {
+  code   = "CA"
+  active = true
+}
+```
+
+**Features:**
+- ISO-3166-1 alpha-2 country codes
+- Activate/deactivate countries (cannot create/delete)
+- Auto-populated country names and regions
+- Import support by country code
+
+**Documentation:** See `MANUAL_TESTING_COUNTRY.md`
+
+---
+
+### `emporix_paymentmode`
+Configure payment methods for your Emporix tenant.
+
+**Example:**
+```hcl
+resource "emporix_paymentmode" "credit_card" {
+  code             = "credit-card"
+  active           = true
+  payment_provider = "STRIPE"
+  
+  configuration = {
+    api_key = "sk_test_..."
+    mode    = "test"
+  }
+}
+```
+
+**Features:**
+- Custom payment mode codes
+- Provider-specific configuration
+- Active/inactive status
+- Full CRUD operations
+
+---
+
+### `emporix_sitesettings`
+Manage site settings and configurations.
+
+**Example:**
+```hcl
+resource "emporix_sitesettings" "main" {
+  code             = "main-site"
+  name             = "Main E-Commerce Site"
+  active           = true
+  default          = true
+  default_language = "en"
+  languages        = ["en", "de", "fr"]
+  currency         = "USD"
+  
+  available_currencies = ["USD", "EUR", "GBP"]
+  ship_to_countries    = ["US", "CA", "GB", "DE", "FR"]
+  
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
+}
+```
+
+**Features:**
+- Multi-language support
+- Multi-currency support
+- Shipping configuration
+- Home base location
+- Default site designation
+
+---
+
+**For complete examples and usage guides, see the `examples/` directory and `MANUAL_TESTING_*.md` files.**
 
 ## Development
 
@@ -138,6 +255,68 @@ GOOS=windows GOARCH=amd64 go build -o terraform-provider-emporix_windows_amd64.e
 
 This provider is provided as-is for use with the Emporix platform.
 
+## Troubleshooting
+
+### Checksum Mismatch Error
+
+If you get an error like:
+```
+verifying github.com/hashicorp/terraform-plugin-framework@v1.4.2: checksum mismatch
+SECURITY ERROR
+```
+
+This happens because the go.sum file needs to be regenerated with the correct checksums for your system.
+
+**Solution:**
+```bash
+# Use the Makefile target
+make setup
+
+# Or manually
+rm -f go.sum
+go mod download
+go mod tidy
+
+# Then build
+make build
+```
+
+### "Unrecognized remote plugin message" Error
+
+If you get this error after running `terraform apply`:
+```
+failed to instantiate provider "registry.terraform.io/emporix/emporix" to obtain schema: Unrecognized remote plugin message
+```
+
+This usually means one of the following:
+
+1. **The provider wasn't rebuilt after changes**: Run `make clean && make install` to rebuild and reinstall
+2. **Old cached files**: Remove `.terraform` and `.terraform.lock.hcl`, then run `terraform init` again
+3. **Go dependencies issue**: Run `go mod download && go mod tidy` before building
+
+**Solution:**
+```bash
+# Clean everything
+make clean
+rm -rf .terraform .terraform.lock.hcl
+
+# Rebuild dependencies
+go mod download
+go mod tidy
+
+# Rebuild and reinstall
+make install
+
+# Reinitialize Terraform
+terraform init
+```
+
+### Provider Not Found
+
+If Terraform can't find your provider, make sure:
+1. The binary is named `terraform-provider-emporix` in the plugins directory
+2. It's in the correct path: `~/.terraform.d/plugins/registry.terraform.io/emporix/emporix/0.1.0/<OS_ARCH>/`
+3. Your Terraform configuration uses the correct source: `source = "emporix/emporix"`
 
 ## Support
 
@@ -153,11 +332,11 @@ This provider includes comprehensive acceptance tests for all resources.
 
 ```bash
 # 1. Run automated setup
-make clean
-make setup
+./test-setup.sh
 
 # 2. Configure credentials
-# create .env.test file with credentials
+cp .env.test.example .env.test
+# Edit .env.test with your test tenant credentials
 
 # 3. Load credentials and run tests
 source .env.test
@@ -186,6 +365,17 @@ export EMPORIX_CLIENT_SECRET="your-client-secret"
 make testacc
 ```
 
+### Test Files
+
+- `internal/provider/resource_country_test.go` - Country resource tests
+- `internal/provider/resource_paymentmode_test.go` - Payment mode tests
+- `internal/provider/resource_sitesettings_test.go` - Site settings tests
+
+### Documentation
+
+- [TESTING_QUICKSTART.md](TESTING_QUICKSTART.md) - Quick start guide
+- [TESTING.md](TESTING.md) - Comprehensive testing guide
+
 ### Requirements
 
 - Go 1.23+
@@ -204,3 +394,5 @@ This provider uses the latest stable Terraform plugin dependencies (December 202
 
 **Requirements:**
 - Go 1.23 or higher (required by latest plugin packages)
+
+These versions are verified from official HashiCorp GitHub releases. See `DEPENDENCY_VERSIONS.md` for details.

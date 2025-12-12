@@ -102,3 +102,26 @@ type CurrencyUpdate struct {
 	Name     interface{} `json:"name"` // string or map[string]string
 	Metadata *Metadata   `json:"metadata,omitempty"`
 }
+
+// TenantConfiguration represents a tenant configuration
+type TenantConfiguration struct {
+	Key     string      `json:"key"`
+	Value   interface{} `json:"value"` // Can be object, string, array, or boolean
+	Version int         `json:"version"`
+	Secured bool        `json:"secured"`
+}
+
+// TenantConfigurationCreate represents the creation payload for a tenant configuration
+type TenantConfigurationCreate struct {
+	Key     string      `json:"key"`
+	Value   interface{} `json:"value"`
+	Secured bool        `json:"secured,omitempty"`
+}
+
+// TenantConfigurationUpdate represents the update payload for a tenant configuration
+type TenantConfigurationUpdate struct {
+	Key     string      `json:"key,omitempty"`
+	Value   interface{} `json:"value,omitempty"`
+	Version int         `json:"version,omitempty"`
+	Secured bool        `json:"secured,omitempty"`
+}
