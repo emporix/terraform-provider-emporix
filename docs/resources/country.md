@@ -109,20 +109,11 @@ However, in most cases you don't need to import - just add the resource and Terr
 
 ## Required OAuth Scopes
 
-To manage countries, include the following scopes in your provider configuration:
+To manage countries, your client_id/secret pair (used in provider section) must have the following scopes:
 
-```hcl
-provider "emporix" {
-  tenant        = "mytenant"
-  client_id     = var.client_id
-  client_secret = var.client_secret
-  scope         = "tenant=mytenant country.country_read country.country_manage"
-}
-```
-
-**Scopes:**
-- `country.country_read` - Required for reading countries
-- `country.country_manage` - Required for updating countries
+**Required Scopes:**
+- `country.country_read` - Required for reading country information
+- `country.country_manage` - Required for updating country active status
 
 ## Important Notes
 

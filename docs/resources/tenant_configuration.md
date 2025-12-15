@@ -226,6 +226,14 @@ terraform import emporix_tenant_configuration.tax_config taxConfiguration
 
 After importing, Terraform will manage the configuration. Note that you'll need to provide the `value` field in your configuration file after import.
 
+## Required OAuth Scopes
+
+To manage tenant configurations, your client_id/secret pair (used in provider section) must have the following scopes:
+
+**Required Scopes:**
+- `configuration.configuration_view` - Required for reading tenant configuration values
+- `configuration.configuration_manage` - Required for creating, updating, and deleting tenant configurations
+
 ## Using jsonencode()
 
 Terraform's `jsonencode()` function converts Terraform values to JSON strings:

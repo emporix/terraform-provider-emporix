@@ -180,6 +180,14 @@ terraform import emporix_currency.usd USD
 
 After importing, Terraform will manage the currency. Note that you'll need to provide the `name` field in your configuration after import.
 
+## Required OAuth Scopes
+
+To manage currencies, your client_id/secret pair (used in provider section) must have the following scopes:
+
+**Required Scopes:**
+- `currency.currency_read` - Required for reading currency information
+- `currency.currency_manage` - Required for creating, updating, and deleting currencies
+
 ## ISO-4217 Compliance
 
 Currency codes must be valid ISO-4217 codes. The code must:

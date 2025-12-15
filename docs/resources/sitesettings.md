@@ -258,3 +258,11 @@ For example:
 ```shell
 terraform import emporix_sitesettings.us_site us-main
 ```
+
+## Required OAuth Scopes
+
+To manage site settings, your client_id/secret pair (used in provider section) must have the following scopes:
+
+**Required Scopes:**
+- `site.site_read` - Required for reading site settings
+- `site.site_manage` - Required for creating, updating, and deleting site settings
