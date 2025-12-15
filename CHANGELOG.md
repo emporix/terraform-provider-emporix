@@ -5,13 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2024-12-15
+## [0.3.0] - 2024-12-16
 
 ### Added
 
 - **New Resource: emporix_currency** - Manage currencies in Emporix
   - Full CRUD operations
   - ISO-4217 compliant codes
+- **New Resource: emporix_tenant_configuration** - Manage tenant configurations in Emporix
+  - Full CRUD operations support (Create, Read, Update, Delete)
+  - Store key-value pairs where values can be any valid JSON (object, string, array, or boolean)
+  - Configuration key structure:
+    - Immutable keys (changing key requires resource replacement)
+    - Support for dotted notation (e.g., `customer.passwordreset.redirecturl`)
 
 [0.3.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.3.0
 
