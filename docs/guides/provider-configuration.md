@@ -458,12 +458,12 @@ terraform apply -var-file=prod.tfvars
 
 ## Next Steps
 
-- Explore [Resources Documentation](../resources/sitesettings.md)
+- Explore [Resources Documentation](https://registry.terraform.io/providers/emporix/emporix/latest/docs/resources/sitesettings)
 - Review [Examples](https://github.com/emporix/terraform-provider-emporix/tree/master/examples)
-- Check [Emporix API Documentation](https://developer.emporix.io)
+- Check [Emporix API Documentation](https://developer.emporix.io/api-references)
 
 ## Support
 
 For issues or questions:
 - Provider Issues: support@emporix.com
-- [Emporix API Documentation](https://developer.emporix.io)
+- [Emporix Documentation](https://developer.emporix.io)
