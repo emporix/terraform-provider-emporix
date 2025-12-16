@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configuration key structure:
     - Immutable keys (changing key requires resource replacement)
     - Support for dotted notation (e.g., `customer.passwordreset.redirecturl`)
+- Documentation improvements.
 
 [0.3.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.3.0
 

@@ -178,6 +178,12 @@ resource "emporix_country" "gb" {
 func testAccCheckCountryDestroy(s *terraform.State) error {
 	ctx := context.Background()
 
+	// Get a configured client
+	client, err := getTestClient()
+	if err != nil {
+		return fmt.Errorf("failed to get test client: %w", err)
+	}
+
 	// Iterate through all resources in state
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "emporix_country" {
@@ -186,17 +192,18 @@ func testAccCheckCountryDestroy(s *terraform.State) error {
 
 		code := rs.Primary.Attributes["code"]
 
-		// Get a configured client
-		client, err := getTestClient()
-		if err != nil {
-			return fmt.Errorf("failed to get test client: %w", err)
-		}
-
 		// Try to get the country
 		country, err := client.GetCountry(ctx, code)
+
+		// If we get a real error, that's a test failure
+		// Countries should always exist (they're pre-populated), so an error is unexpected
 		if err != nil {
-			// If we get an error, that's acceptable (country might not be accessible)
-			continue
+			return fmt.Errorf("error checking country status after destroy: %w", err)
+		}
+
+		// Country should never be nil (they're pre-populated and can't be deleted)
+		if country == nil {
+			return fmt.Errorf("country %s not found (unexpected, countries are pre-populated)", code)
 		}
 
 		// Country should be inactive after destroy
