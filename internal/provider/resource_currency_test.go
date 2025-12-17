@@ -153,18 +153,20 @@ func testAccCheckCurrencyDestroy(s *terraform.State) error {
 
 		code := rs.Primary.Attributes["code"]
 
-		// Try to get the currency - should return nil for 404 (deleted)
-		currency, err := client.GetCurrency(ctx, code)
+		// Try to get the currency
+		_, err := client.GetCurrency(ctx, code)
+
+		// If NotFoundError, resource was successfully destroyed
+		if IsNotFound(err) {
+			continue
+		}
+
+		// If other error, fail the test
 		if err != nil {
 			return fmt.Errorf("unexpected error checking currency: %w", err)
 		}
 
-		// If currency is nil, it was successfully deleted (404)
-		if currency == nil {
-			continue
-		}
-
-		// If currency still exists, that's an error
+		// If no error, currency still exists
 		return fmt.Errorf("currency %s still exists after destroy", code)
 	}
 

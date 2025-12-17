@@ -149,6 +149,14 @@ func (r *TenantConfigurationResource) Read(ctx context.Context, req resource.Rea
 	// Get configuration from API
 	config, err := r.client.GetTenantConfiguration(ctx, data.Key.ValueString())
 	if err != nil {
+		// If resource not found, remove from state (drift detection)
+		if IsNotFound(err) {
+			tflog.Warn(ctx, "Tenant configuration not found, removing from state", map[string]interface{}{
+				"key": data.Key.ValueString(),
+			})
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read tenant configuration, got error: %s", err))
 		return
 	}

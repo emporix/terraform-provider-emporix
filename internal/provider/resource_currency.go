@@ -147,6 +147,14 @@ func (r *CurrencyResource) Read(ctx context.Context, req resource.ReadRequest, r
 	// Get currency from API
 	currency, err := r.client.GetCurrency(ctx, data.Code.ValueString())
 	if err != nil {
+		// If resource not found, remove from state (drift detection)
+		if IsNotFound(err) {
+			tflog.Warn(ctx, "Currency not found, removing from state", map[string]interface{}{
+				"code": data.Code.ValueString(),
+			})
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read currency, got error: %s", err))
 		return
 	}

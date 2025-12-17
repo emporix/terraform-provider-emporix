@@ -144,18 +144,20 @@ func testAccCheckTenantConfigurationDestroy(s *terraform.State) error {
 
 		key := rs.Primary.Attributes["key"]
 
-		// Try to get the configuration - should return nil for 404 (deleted)
-		config, err := client.GetTenantConfiguration(ctx, key)
+		// Try to get the configuration
+		_, err := client.GetTenantConfiguration(ctx, key)
+
+		// If NotFoundError, resource was successfully destroyed
+		if IsNotFound(err) {
+			continue
+		}
+
+		// If other error, fail the test
 		if err != nil {
 			return fmt.Errorf("unexpected error checking tenant configuration: %w", err)
 		}
 
-		// If config is nil, it was successfully deleted (404)
-		if config == nil {
-			continue
-		}
-
-		// If configuration still exists, that's an error
+		// If no error, configuration still exists
 		return fmt.Errorf("tenant configuration %s still exists after destroy", key)
 	}
 

@@ -353,18 +353,20 @@ func testAccCheckSiteSettingsDestroy(s *terraform.State) error {
 
 		code := rs.Primary.Attributes["code"]
 
-		// Try to get the site - should return nil for 404 (deleted)
-		site, err := client.GetSite(ctx, code)
+		// Try to get the site
+		_, err := client.GetSite(ctx, code)
+
+		// If NotFoundError, resource was successfully destroyed
+		if IsNotFound(err) {
+			continue
+		}
+
+		// If other error, fail the test
 		if err != nil {
 			return fmt.Errorf("unexpected error checking site settings: %w", err)
 		}
 
-		// If nil, resource was successfully destroyed
-		if site == nil {
-			continue
-		}
-
-		// If still exists, fail the test
+		// If no error, site still exists
 		return fmt.Errorf("site settings %s still exists after destroy", code)
 	}
 

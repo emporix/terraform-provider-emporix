@@ -221,18 +221,20 @@ func testAccCheckPaymentModeDestroy(s *terraform.State) error {
 
 		id := rs.Primary.ID
 
-		// Try to get the payment mode - should return nil for 404 (deleted)
-		paymentMode, err := client.GetPaymentMode(ctx, id)
+		// Try to get the payment mode
+		_, err := client.GetPaymentMode(ctx, id)
+
+		// If NotFoundError, resource was successfully destroyed
+		if IsNotFound(err) {
+			continue
+		}
+
+		// If other error, fail the test
 		if err != nil {
 			return fmt.Errorf("unexpected error checking payment mode: %w", err)
 		}
 
-		// If nil, resource was successfully destroyed
-		if paymentMode == nil {
-			continue
-		}
-
-		// If still exists, fail the test
+		// If no error, payment mode still exists
 		return fmt.Errorf("payment mode %s still exists after destroy", id)
 	}
 
