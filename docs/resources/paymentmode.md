@@ -74,19 +74,10 @@ terraform import emporix_paymentmode.example 92d77b2b-9385-43ad-a859-55176fbcbd3
 
 ## Required OAuth Scopes
 
-To manage payment modes, include the following scopes in your provider configuration:
+To manage payment modes, your client_id/secret pair (used in provider section) must have the following scopes:
 
-```hcl
-provider "emporix" {
-  tenant        = "mytenant"
-  client_id     = var.client_id
-  client_secret = var.client_secret
-  scope         = "tenant=mytenant payment-gateway.paymentmodes_read payment-gateway.paymentmodes_manage"
-}
-```
-
-**Scopes:**
-- `payment-gateway.paymentmodes_read` - Required for reading payment modes
+**Required Scopes:**
+- `payment-gateway.paymentmodes_read` - Required for reading payment mode information
 - `payment-gateway.paymentmodes_manage` - Required for creating, updating, and deleting payment modes
 
 ## Notes

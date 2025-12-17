@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -49,4 +50,25 @@ provider "emporix" {
   # EMPORIX_CLIENT_SECRET
 }
 `
+}
+
+// getTestClient returns a configured Emporix client for use in CheckDestroy functions
+func getTestClient() (*EmporixClient, error) {
+	tenant := os.Getenv("EMPORIX_TENANT")
+	clientID := os.Getenv("EMPORIX_CLIENT_ID")
+	clientSecret := os.Getenv("EMPORIX_CLIENT_SECRET")
+	apiURL := os.Getenv("EMPORIX_API_URL")
+
+	if apiURL == "" {
+		apiURL = "https://api.emporix.io"
+	}
+
+	// Get OAuth token
+	token, err := generateAccessToken(context.Background(), apiURL, clientID, clientSecret, "")
+	if err != nil {
+		return nil, err
+	}
+
+	// Create and return client
+	return NewEmporixClient(tenant, token, apiURL), nil
 }

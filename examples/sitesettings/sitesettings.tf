@@ -10,17 +10,15 @@ terraform {
 }
 
 # Configure the Emporix provider
+# Recommended: Use a Custom API Key with only the required scopes
+# See: https://developer.emporix.io/ce/getting-started/developer-portal/manage-apikeys#custom-api-keys
 provider "emporix" {
   tenant  = var.emporix_tenant
   api_url = var.emporix_api_url
   
-  # Option 1: Use client credentials (recommended)
+  # Use client credentials from your Custom API Key
   client_id     = var.emporix_client_id
   client_secret = var.emporix_client_secret
-  scope         = "tenant=${var.emporix_tenant} site.site_read site.site_manage"
-  
-  # Option 2: Use pre-generated token
-  # access_token = var.emporix_access_token
 }
 
 # Variables

@@ -1,16 +1,19 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccCountryResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckCountryDestroy,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
@@ -53,6 +56,7 @@ func TestAccCountryResource_defaultActive(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckCountryDestroy,
 		Steps: []resource.TestStep{
 			// Create without specifying active (should default to true)
 			{
@@ -70,6 +74,7 @@ func TestAccCountryResource_requiresReplace(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckCountryDestroy,
 		Steps: []resource.TestStep{
 			// Create with GB
 			{
@@ -93,6 +98,7 @@ func TestAccCountryResource_multipleCountries(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckCountryDestroy,
 		Steps: []resource.TestStep{
 			// Create multiple countries
 			{
@@ -114,6 +120,7 @@ func TestAccCountryResource_readOnlyFields(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckCountryDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccCountryResourceConfig("FR", true),
@@ -165,4 +172,45 @@ resource "emporix_country" "gb" {
   active = false
 }
 `
+}
+
+// testAccCheckCountryDestroy verifies that countries have been deactivated after destroy
+func testAccCheckCountryDestroy(s *terraform.State) error {
+	ctx := context.Background()
+
+	// Get a configured client
+	client, err := getTestClient()
+	if err != nil {
+		return fmt.Errorf("failed to get test client: %w", err)
+	}
+
+	// Iterate through all resources in state
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "emporix_country" {
+			continue
+		}
+
+		code := rs.Primary.Attributes["code"]
+
+		// Try to get the country
+		country, err := client.GetCountry(ctx, code)
+
+		// If we get a real error, that's a test failure
+		// Countries should always exist (they're pre-populated), so an error is unexpected
+		if err != nil {
+			return fmt.Errorf("error checking country status after destroy: %w", err)
+		}
+
+		// Country should never be nil (they're pre-populated and can't be deleted)
+		if country == nil {
+			return fmt.Errorf("country %s not found (unexpected, countries are pre-populated)", code)
+		}
+
+		// Country should be inactive after destroy
+		if country.Active {
+			return fmt.Errorf("country %s is still active after destroy (expected: inactive)", code)
+		}
+	}
+
+	return nil
 }
