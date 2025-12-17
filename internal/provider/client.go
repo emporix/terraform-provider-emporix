@@ -373,6 +373,10 @@ func (c *EmporixClient) GetCountry(ctx context.Context, code string) (*Country, 
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
@@ -475,6 +479,10 @@ func (c *EmporixClient) GetCurrency(ctx context.Context, code string) (*Currency
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
@@ -591,6 +599,10 @@ func (c *EmporixClient) GetTenantConfiguration(ctx context.Context, key string) 
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 

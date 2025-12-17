@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -354,27 +353,18 @@ func testAccCheckSiteSettingsDestroy(s *terraform.State) error {
 
 		code := rs.Primary.Attributes["code"]
 
-		// Try to get the site
+		// Try to get the site - should return nil for 404 (deleted)
 		site, err := client.GetSite(ctx, code)
-
-		// If we get a 404 error, the resource was successfully destroyed
 		if err != nil {
-			// Check if the error is a 404 (resource not found)
-			if strings.Contains(err.Error(), "status code: 404") ||
-				strings.Contains(err.Error(), "not found") ||
-				strings.Contains(err.Error(), "Not Found") {
-				continue // Resource was successfully destroyed
-			}
-			// Any other error is a test failure
-			return fmt.Errorf("error checking if site settings was destroyed: %w", err)
+			return fmt.Errorf("unexpected error checking site settings: %w", err)
 		}
 
-		// If site is nil, it was properly deleted (404 response)
+		// If nil, resource was successfully destroyed
 		if site == nil {
 			continue
 		}
 
-		// If site still exists, that's an error
+		// If still exists, fail the test
 		return fmt.Errorf("site settings %s still exists after destroy", code)
 	}
 

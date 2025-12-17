@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -154,22 +153,13 @@ func testAccCheckCurrencyDestroy(s *terraform.State) error {
 
 		code := rs.Primary.Attributes["code"]
 
-		// Try to get the currency
+		// Try to get the currency - should return nil for 404 (deleted)
 		currency, err := client.GetCurrency(ctx, code)
-
-		// If we get a 404 error, the resource was successfully destroyed
 		if err != nil {
-			// Check if the error is a 404 (resource not found)
-			if strings.Contains(err.Error(), "status code: 404") ||
-				strings.Contains(err.Error(), "not found") ||
-				strings.Contains(err.Error(), "Not Found") {
-				continue // Resource was successfully destroyed
-			}
-			// Any other error is a test failure
-			return fmt.Errorf("error checking if currency was destroyed: %w", err)
+			return fmt.Errorf("unexpected error checking currency: %w", err)
 		}
 
-		// If currency is nil, it was properly deleted (404 response)
+		// If currency is nil, it was successfully deleted (404)
 		if currency == nil {
 			continue
 		}

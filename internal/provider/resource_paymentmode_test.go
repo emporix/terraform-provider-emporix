@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -222,27 +221,18 @@ func testAccCheckPaymentModeDestroy(s *terraform.State) error {
 
 		id := rs.Primary.ID
 
-		// Try to get the payment mode
+		// Try to get the payment mode - should return nil for 404 (deleted)
 		paymentMode, err := client.GetPaymentMode(ctx, id)
-
-		// If we get a 404 error, the resource was successfully destroyed
 		if err != nil {
-			// Check if the error is a 404 (resource not found)
-			if strings.Contains(err.Error(), "status code: 404") ||
-				strings.Contains(err.Error(), "not found") ||
-				strings.Contains(err.Error(), "Not Found") {
-				continue // Resource was successfully destroyed
-			}
-			// Any other error is a test failure
-			return fmt.Errorf("error checking if payment mode was destroyed: %w", err)
+			return fmt.Errorf("unexpected error checking payment mode: %w", err)
 		}
 
-		// If payment mode is nil, it was properly deleted (404 response)
+		// If nil, resource was successfully destroyed
 		if paymentMode == nil {
 			continue
 		}
 
-		// If payment mode still exists, that's an error
+		// If still exists, fail the test
 		return fmt.Errorf("payment mode %s still exists after destroy", id)
 	}
 
