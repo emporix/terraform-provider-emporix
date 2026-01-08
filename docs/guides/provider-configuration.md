@@ -19,7 +19,7 @@ Before configuring the provider, you need:
 
 ## Getting Your Credentials
 
-### Step 1: Create Tenant
+### Create Tenant
 
 Follow the instructions: https://developer.emporix.io/ce/getting-started/creating-a-tenant
 
@@ -67,6 +67,37 @@ provider "emporix" {
 - ✅ Long-lived credentials
 - ✅ Suitable for automation
 - ✅ Best for CI/CD pipelines
+
+#### Using Custom API Keys (Strongly Recommended)
+
+For better security, it's highly recommended to use **Custom API Keys** instead of the Management API key. Custom API keys allow you to:
+
+- ✅ **Limit access to specific scopes** - Only grant the permissions your Terraform configuration needs
+- ✅ **Separate concerns** - Different keys for different purposes (e.g., separate keys for country management, currency management, etc.)
+- ✅ **Enhanced security** - If a key is compromised, only specific resources are at risk
+
+**How to create Custom API Keys:**
+
+See [Emporix Custom API Keys Documentation](https://developer.emporix.io/ce/getting-started/developer-portal/manage-apikeys#custom-api-keys)
+
+**Example: Creating a Custom API Key for Currency Management**
+
+If you're only managing currencies with Terraform:
+
+1. Create a custom API key with scopes:
+   - `currency.currency_read`
+   - `currency.currency_manage`
+2. Use this key in your provider configuration:
+
+```terraform
+provider "emporix" {
+  tenant        = "your-tenant"
+  client_id     = "custom-key-client-id"      # From your custom API key
+  client_secret = "custom-key-secret"         # From your custom API key
+}
+```
+
+**Note:** Each resource's documentation lists the required scopes. Create custom API keys with only the scopes you need for your specific use case.
 
 ### Method 2: Pre-Generated Access Token
 
@@ -427,12 +458,12 @@ terraform apply -var-file=prod.tfvars
 
 ## Next Steps
 
-- Explore [Resources Documentation](../resources/sitesettings.md)
+- Explore [Resources Documentation](https://registry.terraform.io/providers/emporix/emporix/latest/docs/resources/sitesettings)
 - Review [Examples](https://github.com/emporix/terraform-provider-emporix/tree/master/examples)
-- Check [Emporix API Documentation](https://developer.emporix.io)
+- Check [Emporix API Documentation](https://developer.emporix.io/api-references)
 
 ## Support
 
 For issues or questions:
 - Provider Issues: support@emporix.com
-- [Emporix API Documentation](https://developer.emporix.io)
+- [Emporix Documentation](https://developer.emporix.io)

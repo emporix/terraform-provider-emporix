@@ -77,3 +77,51 @@ type CountryUpdate struct {
 	Active   *bool     `json:"active,omitempty"`
 	Metadata *Metadata `json:"metadata,omitempty"`
 }
+
+// Currency represents a currency in Emporix
+type Currency struct {
+	Code     string            `json:"code"`
+	Name     map[string]string `json:"name"` // Always returned as map from API
+	Metadata *Metadata         `json:"metadata,omitempty"`
+}
+
+// CurrencyCreate represents the creation payload for a currency
+// Name can be either:
+// - string (with Content-Language header set to specific language)
+// - map[string]string (with Content-Language header set to *)
+type CurrencyCreate struct {
+	Code string      `json:"code"`
+	Name interface{} `json:"name"` // string or map[string]string
+}
+
+// CurrencyUpdate represents the update payload for a currency
+// Name can be either:
+// - string (with Content-Language header set to specific language)
+// - map[string]string (with Content-Language header set to *)
+type CurrencyUpdate struct {
+	Name     interface{} `json:"name"` // string or map[string]string
+	Metadata *Metadata   `json:"metadata,omitempty"`
+}
+
+// TenantConfiguration represents a tenant configuration
+type TenantConfiguration struct {
+	Key     string      `json:"key"`
+	Value   interface{} `json:"value"` // Can be object, string, array, or boolean
+	Version int         `json:"version"`
+	Secured bool        `json:"secured"`
+}
+
+// TenantConfigurationCreate represents the creation payload for a tenant configuration
+type TenantConfigurationCreate struct {
+	Key     string      `json:"key"`
+	Value   interface{} `json:"value"`
+	Secured bool        `json:"secured,omitempty"`
+}
+
+// TenantConfigurationUpdate represents the update payload for a tenant configuration
+type TenantConfigurationUpdate struct {
+	Key     string      `json:"key,omitempty"`
+	Value   interface{} `json:"value,omitempty"`
+	Version int         `json:"version,omitempty"`
+	Secured bool        `json:"secured,omitempty"`
+}

@@ -1,11 +1,13 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccPaymentModeResource_basic(t *testing.T) {
@@ -14,6 +16,7 @@ func TestAccPaymentModeResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPaymentModeDestroy,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
@@ -49,6 +52,7 @@ func TestAccPaymentModeResource_cashOnDelivery(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPaymentModeDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPaymentModeResourceConfig(code, true, "CASH_ON_DELIVERY"),
@@ -67,6 +71,7 @@ func TestAccPaymentModeResource_withConfiguration(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPaymentModeDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPaymentModeResourceConfigWithSettings(code),
@@ -96,6 +101,7 @@ func TestAccPaymentModeResource_requiresReplace(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPaymentModeDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPaymentModeResourceConfig(code1, true, "INVOICE"),
@@ -122,6 +128,7 @@ func TestAccPaymentModeResource_multiplePaymentModes(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPaymentModeDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccPaymentModeResourceConfigMultiple(code1, code2),
@@ -194,4 +201,42 @@ resource "emporix_paymentmode" "cod" {
   payment_provider = "CASH_ON_DELIVERY"
 }
 `, code1, code2)
+}
+
+// testAccCheckPaymentModeDestroy verifies that payment modes have been deleted
+func testAccCheckPaymentModeDestroy(s *terraform.State) error {
+	ctx := context.Background()
+
+	// Get configured client
+	client, err := getTestClient()
+	if err != nil {
+		return fmt.Errorf("failed to get test client: %w", err)
+	}
+
+	// Iterate through all resources in state
+	for _, rs := range s.RootModule().Resources {
+		if rs.Type != "emporix_paymentmode" {
+			continue
+		}
+
+		id := rs.Primary.ID
+
+		// Try to get the payment mode
+		_, err := client.GetPaymentMode(ctx, id)
+
+		// If not found, resource was successfully destroyed
+		if IsNotFound(err) {
+			continue
+		}
+
+		// If other error, fail the test
+		if err != nil {
+			return fmt.Errorf("unexpected error checking payment mode: %w", err)
+		}
+
+		// If no error, payment mode still exists
+		return fmt.Errorf("payment mode %s still exists after destroy", id)
+	}
+
+	return nil
 }

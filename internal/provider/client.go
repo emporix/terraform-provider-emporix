@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,19 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
+
+// NotFoundError is returned when a resource is not found (404)
+type NotFoundError struct{}
+
+func (e *NotFoundError) Error() string {
+	return "not found"
+}
+
+// IsNotFound checks if an error is a NotFoundError
+func IsNotFound(err error) bool {
+	var notFoundErr *NotFoundError
+	return errors.As(err, &notFoundErr)
+}
 
 type EmporixClient struct {
 	Tenant      string
@@ -179,7 +193,7 @@ func (c *EmporixClient) GetSite(ctx context.Context, siteCode string) (*SiteSett
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
+		return nil, &NotFoundError{}
 	}
 
 	// Read body (already logged in doRequest)
@@ -305,7 +319,7 @@ func (c *EmporixClient) GetPaymentMode(ctx context.Context, id string) (*Payment
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
+		return nil, &NotFoundError{}
 	}
 
 	// Read body (already logged in doRequest)
@@ -373,6 +387,10 @@ func (c *EmporixClient) GetCountry(ctx context.Context, code string) (*Country, 
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
@@ -425,4 +443,234 @@ func (c *EmporixClient) UpdateCountry(ctx context.Context, code string, updateDa
 	tflog.Debug(ctx, "Update succeeded, fetching current state via GET")
 
 	return c.GetCountry(ctx, code)
+}
+
+// CreateCurrency creates a new currency
+func (c *EmporixClient) CreateCurrency(ctx context.Context, currency *CurrencyCreate) (*Currency, error) {
+	path := fmt.Sprintf("/currency/%s/currencies", strings.ToLower(c.Tenant))
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "POST", path, currency, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	// API may not return complete data in CREATE response (especially when using Content-Language: *)
+	// Always fetch the currency after creation to get complete state with all translations
+	var createdCurrency Currency
+	if err := json.Unmarshal(bodyBytes, &createdCurrency); err != nil {
+		return nil, fmt.Errorf("error decoding currency response: %w", err)
+	}
+
+	tflog.Debug(ctx, "Currency created, fetching complete state via GET")
+
+	// Fetch complete currency data with all translations
+	return c.GetCurrency(ctx, createdCurrency.Code)
+}
+
+// GetCurrency retrieves a currency by code
+func (c *EmporixClient) GetCurrency(ctx context.Context, code string) (*Currency, error) {
+	path := fmt.Sprintf("/currency/%s/currencies/%s", strings.ToLower(c.Tenant), code)
+
+	// Always use Accept-Language: * to retrieve all translations
+	headers := map[string]string{
+		"Accept-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var currency Currency
+	if err := json.Unmarshal(bodyBytes, &currency); err != nil {
+		return nil, fmt.Errorf("error decoding currency response: %w", err)
+	}
+
+	return &currency, nil
+}
+
+// UpdateCurrency updates a currency
+func (c *EmporixClient) UpdateCurrency(ctx context.Context, code string, updateData *CurrencyUpdate) (*Currency, error) {
+	// First, get current currency to retrieve metadata.version (required for PUT)
+	currency, err := c.GetCurrency(ctx, code)
+	if err != nil {
+		return nil, fmt.Errorf("error getting currency before update: %w", err)
+	}
+
+	// Add metadata.version to update data (required by API)
+	if currency.Metadata != nil && currency.Metadata.Version > 0 {
+		if updateData.Metadata == nil {
+			updateData.Metadata = &Metadata{}
+		}
+		updateData.Metadata.Version = currency.Metadata.Version
+	}
+
+	path := fmt.Sprintf("/currency/%s/currencies/%s", strings.ToLower(c.Tenant), code)
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// PUT returns 204 No Content, so fetch current state via GET
+	tflog.Debug(ctx, "Update succeeded, fetching current state via GET")
+
+	return c.GetCurrency(ctx, code)
+}
+
+// DeleteCurrency deletes a currency by code
+func (c *EmporixClient) DeleteCurrency(ctx context.Context, code string) error {
+	path := fmt.Sprintf("/currency/%s/currencies/%s", strings.ToLower(c.Tenant), code)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// CreateTenantConfiguration creates a new tenant configuration
+func (c *EmporixClient) CreateTenantConfiguration(ctx context.Context, config *TenantConfigurationCreate) (*TenantConfiguration, error) {
+	path := fmt.Sprintf("/configuration/%s/configurations", strings.ToLower(c.Tenant))
+
+	// Wrap in array since API expects array
+	configs := []TenantConfigurationCreate{*config}
+
+	resp, err := c.doRequest(ctx, "POST", path, configs, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	// API returns array, we need the first element
+	var createdConfigs []TenantConfiguration
+	if err := json.Unmarshal(bodyBytes, &createdConfigs); err != nil {
+		return nil, fmt.Errorf("error decoding tenant configuration response: %w", err)
+	}
+
+	if len(createdConfigs) == 0 {
+		return nil, fmt.Errorf("API returned empty array")
+	}
+
+	return &createdConfigs[0], nil
+}
+
+// GetTenantConfiguration retrieves a tenant configuration by key
+func (c *EmporixClient) GetTenantConfiguration(ctx context.Context, key string) (*TenantConfiguration, error) {
+	path := fmt.Sprintf("/configuration/%s/configurations/%s", strings.ToLower(c.Tenant), key)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var config TenantConfiguration
+	if err := json.Unmarshal(bodyBytes, &config); err != nil {
+		return nil, fmt.Errorf("error decoding tenant configuration: %w", err)
+	}
+
+	return &config, nil
+}
+
+// UpdateTenantConfiguration updates a tenant configuration
+func (c *EmporixClient) UpdateTenantConfiguration(ctx context.Context, key string, updateData *TenantConfigurationUpdate) (*TenantConfiguration, error) {
+	path := fmt.Sprintf("/configuration/%s/configurations/%s", strings.ToLower(c.Tenant), key)
+
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var config TenantConfiguration
+	if err := json.Unmarshal(bodyBytes, &config); err != nil {
+		return nil, fmt.Errorf("error decoding tenant configuration: %w", err)
+	}
+
+	return &config, nil
+}
+
+// DeleteTenantConfiguration deletes a tenant configuration by key
+func (c *EmporixClient) DeleteTenantConfiguration(ctx context.Context, key string) error {
+	path := fmt.Sprintf("/configuration/%s/configurations/%s", strings.ToLower(c.Tenant), key)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -176,6 +176,11 @@ func (r *CountryResource) Read(ctx context.Context, req resource.ReadRequest, re
 	// Get country from API
 	country, err := r.client.GetCountry(ctx, data.Code.ValueString())
 	if err != nil {
+		// If resource not found, remove from state (drift detection)
+		if IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read country, got error: %s", err))
 		return
 	}

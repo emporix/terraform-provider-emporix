@@ -307,15 +307,15 @@ func (r *SiteSettingsResource) Read(ctx context.Context, req resource.ReadReques
 
 	site, err := r.client.GetSite(ctx, state.Code.ValueString())
 	if err != nil {
+		// If resource not found, remove from state (drift detection)
+		if IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error reading site",
 			fmt.Sprintf("Could not read site %s: %s", state.Code.ValueString(), err.Error()),
 		)
-		return
-	}
-
-	if site == nil {
-		resp.State.RemoveResource(ctx)
 		return
 	}
 
