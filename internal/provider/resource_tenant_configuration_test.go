@@ -147,7 +147,7 @@ func testAccCheckTenantConfigurationDestroy(s *terraform.State) error {
 		// Try to get the configuration
 		_, err := client.GetTenantConfiguration(ctx, key)
 
-		// If NotFoundError, resource was successfully destroyed
+		// If not found, resource was successfully destroyed
 		if IsNotFound(err) {
 			continue
 		}

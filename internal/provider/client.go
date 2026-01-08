@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,19 +15,16 @@ import (
 )
 
 // NotFoundError is returned when a resource is not found (404)
-type NotFoundError struct {
-	ResourceType string
-	Identifier   string
-}
+type NotFoundError struct{}
 
 func (e *NotFoundError) Error() string {
-	return fmt.Sprintf("%s not found: %s", e.ResourceType, e.Identifier)
+	return "not found"
 }
 
 // IsNotFound checks if an error is a NotFoundError
 func IsNotFound(err error) bool {
-	_, ok := err.(*NotFoundError)
-	return ok
+	var notFoundErr *NotFoundError
+	return errors.As(err, &notFoundErr)
 }
 
 type EmporixClient struct {
@@ -195,7 +193,7 @@ func (c *EmporixClient) GetSite(ctx context.Context, siteCode string) (*SiteSett
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, &NotFoundError{ResourceType: "Site", Identifier: siteCode}
+		return nil, &NotFoundError{}
 	}
 
 	// Read body (already logged in doRequest)
@@ -321,7 +319,7 @@ func (c *EmporixClient) GetPaymentMode(ctx context.Context, id string) (*Payment
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, &NotFoundError{ResourceType: "PaymentMode", Identifier: id}
+		return nil, &NotFoundError{}
 	}
 
 	// Read body (already logged in doRequest)
@@ -390,7 +388,7 @@ func (c *EmporixClient) GetCountry(ctx context.Context, code string) (*Country, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, &NotFoundError{ResourceType: "Country", Identifier: code}
+		return nil, &NotFoundError{}
 	}
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
@@ -497,7 +495,7 @@ func (c *EmporixClient) GetCurrency(ctx context.Context, code string) (*Currency
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, &NotFoundError{ResourceType: "Currency", Identifier: code}
+		return nil, &NotFoundError{}
 	}
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
@@ -617,7 +615,7 @@ func (c *EmporixClient) GetTenantConfiguration(ctx context.Context, key string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, &NotFoundError{ResourceType: "TenantConfiguration", Identifier: key}
+		return nil, &NotFoundError{}
 	}
 
 	bodyBytes, _ := io.ReadAll(resp.Body)

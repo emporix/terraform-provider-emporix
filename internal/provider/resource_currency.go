@@ -149,9 +149,6 @@ func (r *CurrencyResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if err != nil {
 		// If resource not found, remove from state (drift detection)
 		if IsNotFound(err) {
-			tflog.Warn(ctx, "Currency not found, removing from state", map[string]interface{}{
-				"code": data.Code.ValueString(),
-			})
 			resp.State.RemoveResource(ctx)
 			return
 		}

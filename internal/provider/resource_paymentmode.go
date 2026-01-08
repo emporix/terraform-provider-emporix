@@ -175,9 +175,6 @@ func (r *PaymentModeResource) Read(ctx context.Context, req resource.ReadRequest
 	if err != nil {
 		// If resource not found, remove from state (drift detection)
 		if IsNotFound(err) {
-			tflog.Warn(ctx, "Payment mode not found, removing from state", map[string]interface{}{
-				"id": state.ID.ValueString(),
-			})
 			resp.State.RemoveResource(ctx)
 			return
 		}

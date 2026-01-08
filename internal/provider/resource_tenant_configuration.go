@@ -151,9 +151,6 @@ func (r *TenantConfigurationResource) Read(ctx context.Context, req resource.Rea
 	if err != nil {
 		// If resource not found, remove from state (drift detection)
 		if IsNotFound(err) {
-			tflog.Warn(ctx, "Tenant configuration not found, removing from state", map[string]interface{}{
-				"key": data.Key.ValueString(),
-			})
 			resp.State.RemoveResource(ctx)
 			return
 		}

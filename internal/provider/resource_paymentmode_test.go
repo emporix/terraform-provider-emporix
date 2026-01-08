@@ -224,7 +224,7 @@ func testAccCheckPaymentModeDestroy(s *terraform.State) error {
 		// Try to get the payment mode
 		_, err := client.GetPaymentMode(ctx, id)
 
-		// If NotFoundError, resource was successfully destroyed
+		// If not found, resource was successfully destroyed
 		if IsNotFound(err) {
 			continue
 		}

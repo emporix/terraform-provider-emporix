@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var _ resource.Resource = &SiteSettingsResource{}
@@ -310,9 +309,6 @@ func (r *SiteSettingsResource) Read(ctx context.Context, req resource.ReadReques
 	if err != nil {
 		// If resource not found, remove from state (drift detection)
 		if IsNotFound(err) {
-			tflog.Warn(ctx, "Site not found, removing from state", map[string]interface{}{
-				"code": state.Code.ValueString(),
-			})
 			resp.State.RemoveResource(ctx)
 			return
 		}

@@ -156,7 +156,7 @@ func testAccCheckCurrencyDestroy(s *terraform.State) error {
 		// Try to get the currency
 		_, err := client.GetCurrency(ctx, code)
 
-		// If NotFoundError, resource was successfully destroyed
+		// If not found, resource was successfully destroyed
 		if IsNotFound(err) {
 			continue
 		}
