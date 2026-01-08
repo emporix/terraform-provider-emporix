@@ -97,7 +97,6 @@ resource "emporix_tenant_configuration" "project_lang_clean" {
   value = jsonencode(jsonencode(local.languages))
 }
 ```
-```
 
 ### Secured Configuration
 
