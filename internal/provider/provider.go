@@ -185,6 +185,7 @@ func (p *EmporixProvider) Resources(ctx context.Context) []func() resource.Resou
 		NewCountryResource,
 		NewCurrencyResource,
 		NewTenantConfigurationResource,
+		NewShippingZoneResource,
 	}
 }
 
