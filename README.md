@@ -114,14 +114,11 @@ This provider includes comprehensive acceptance tests for all resources.
 ### Quick Start
 
 ```bash
-# 1. Run automated setup
-./test-setup.sh
-
-# 2. Configure credentials
+# 1. Configure credentials
 cp .env.test.example .env.test
 # Edit .env.test with your test tenant credentials
 
-# 3. Load credentials and run tests
+# 2. Load credentials and run tests
 source .env.test
 make testacc
 
