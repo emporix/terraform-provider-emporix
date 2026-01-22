@@ -739,6 +739,10 @@ func (c *EmporixClient) CreateShippingZone(ctx context.Context, site string, zon
 	if err := json.Unmarshal(bodyBytes, &createdZone); err != nil {
 		// If unmarshal fails but create was successful, return nil
 		// The caller will do a GET to retrieve the actual state
+		tflog.Debug(ctx, "Failed to unmarshal create response, will rely on read-after-write", map[string]interface{}{
+			"error": err.Error(),
+			"body":  string(bodyBytes),
+		})
 		return nil, nil
 	}
 
@@ -839,6 +843,10 @@ func (c *EmporixClient) UpdateShippingZone(ctx context.Context, site, zoneID str
 	if err := json.Unmarshal(bodyBytes, &updatedZone); err != nil {
 		// If unmarshal fails but update was successful, return nil
 		// The caller will do a GET to retrieve the actual state
+		tflog.Debug(ctx, "Failed to unmarshal update response, will rely on read-after-write", map[string]interface{}{
+			"error": err.Error(),
+			"body":  string(bodyBytes),
+		})
 		return nil, nil
 	}
 

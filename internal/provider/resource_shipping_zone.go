@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -98,6 +99,8 @@ func (r *ShippingZoneResource) Schema(ctx context.Context, req resource.SchemaRe
 }
 
 func (r *ShippingZoneResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	// ProviderData will be nil when the resource is initially created
+	// This is expected behavior during the configure phase
 	if req.ProviderData == nil {
 		return
 	}
@@ -106,7 +109,7 @@ func (r *ShippingZoneResource) Configure(ctx context.Context, req resource.Confi
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *EmporixClient, got: %T", req.ProviderData),
+			fmt.Sprintf("Expected *EmporixClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
@@ -415,7 +418,22 @@ func (r *ShippingZoneResource) Delete(ctx context.Context, req resource.DeleteRe
 }
 
 func (r *ShippingZoneResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	// Import ID format: "site:zone-id"
+	// Example: "main:zone-express"
+	parts := strings.Split(req.ID, ":")
+	if len(parts) != 2 {
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			fmt.Sprintf("Expected import ID in format 'site:zone-id', got: %s", req.ID),
+		)
+		return
+	}
+
+	site := parts[0]
+	zoneID := parts[1]
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), zoneID)...)
 }
 
 // uniqueCountryValidatorSet validates that each country appears only once in ship_to set
@@ -477,13 +495,19 @@ func convertShipToToSet(ctx context.Context, shipTo []ShippingDestination) (type
 	// No need to sort - sets are unordered!
 	var destinations []ShippingDestinationModel
 	for _, dest := range shipTo {
+		country := types.StringValue(dest.Country)
 		postalCode := types.StringValue(dest.PostalCode)
-		// If postal_code is empty, use null instead of empty string
+
+		// Use null for empty values instead of empty strings
+		if dest.Country == "" {
+			country = types.StringNull()
+		}
 		if dest.PostalCode == "" {
 			postalCode = types.StringNull()
 		}
+
 		destinations = append(destinations, ShippingDestinationModel{
-			Country:    types.StringValue(dest.Country),
+			Country:    country,
 			PostalCode: postalCode,
 		})
 	}
@@ -497,8 +521,6 @@ func convertShipToToSet(ctx context.Context, shipTo []ShippingDestination) (type
 
 	return setValue, diags
 }
-
-// Helper function to convert API name response to types.Map
 
 // Helper function to convert API name response to types.Map
 func convertNameToMap(ctx context.Context, apiName interface{}, originalMap map[string]string) (types.Map, diag.Diagnostics) {
