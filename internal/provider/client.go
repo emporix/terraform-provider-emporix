@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -25,6 +26,23 @@ func (e *NotFoundError) Error() string {
 func IsNotFound(err error) bool {
 	var notFoundErr *NotFoundError
 	return errors.As(err, &notFoundErr)
+}
+
+// Global mutex map for per-tenant shipping zone operations
+var (
+	shippingZoneMutexes     = make(map[string]*sync.Mutex)
+	shippingZoneMutexesLock sync.Mutex
+)
+
+// getShippingZoneMutex returns the mutex for a specific tenant's shipping zone operations
+func getShippingZoneMutex(tenant string) *sync.Mutex {
+	shippingZoneMutexesLock.Lock()
+	defer shippingZoneMutexesLock.Unlock()
+
+	if _, exists := shippingZoneMutexes[tenant]; !exists {
+		shippingZoneMutexes[tenant] = &sync.Mutex{}
+	}
+	return shippingZoneMutexes[tenant]
 }
 
 type EmporixClient struct {
@@ -659,6 +677,190 @@ func (c *EmporixClient) UpdateTenantConfiguration(ctx context.Context, key strin
 // DeleteTenantConfiguration deletes a tenant configuration by key
 func (c *EmporixClient) DeleteTenantConfiguration(ctx context.Context, key string) error {
 	path := fmt.Sprintf("/configuration/%s/configurations/%s", strings.ToLower(c.Tenant), key)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ShippingZone represents a shipping zone
+type ShippingZone struct {
+	ID      string                `json:"id"`
+	Name    interface{}           `json:"name"`
+	Default bool                  `json:"default,omitempty"`
+	ShipTo  []ShippingDestination `json:"shipTo"`
+}
+
+// ShippingDestination represents a shipping destination
+type ShippingDestination struct {
+	Country    string `json:"country"`
+	PostalCode string `json:"postalCode,omitempty"`
+}
+
+// CreateShippingZone creates a new shipping zone
+func (c *EmporixClient) CreateShippingZone(ctx context.Context, site string, zone *ShippingZone) (*ShippingZone, error) {
+	// Lock for this tenant's shipping zone operations
+	mu := getShippingZoneMutex(c.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := fmt.Sprintf("/shipping/%s/%s/zones", strings.ToLower(c.Tenant), site)
+
+	resp, err := c.doRequest(ctx, "POST", path, zone, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	// Accept both 201 Created and 200 OK for successful creates
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	// If response body is empty, return nil
+	// The caller will do a GET to retrieve the actual state
+	if len(bodyBytes) == 0 {
+		return nil, nil
+	}
+
+	var createdZone ShippingZone
+	if err := json.Unmarshal(bodyBytes, &createdZone); err != nil {
+		// If unmarshal fails but create was successful, return nil
+		// The caller will do a GET to retrieve the actual state
+		tflog.Debug(ctx, "Failed to unmarshal create response, will rely on read-after-write", map[string]interface{}{
+			"error": err.Error(),
+			"body":  string(bodyBytes),
+		})
+		return nil, nil
+	}
+
+	return &createdZone, nil
+}
+
+// GetShippingZone retrieves a shipping zone by ID
+func (c *EmporixClient) GetShippingZone(ctx context.Context, site, zoneID string) (*ShippingZone, error) {
+	// Lock for this tenant's shipping zone operations
+	mu := getShippingZoneMutex(c.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := fmt.Sprintf("/shipping/%s/%s/zones/%s", strings.ToLower(c.Tenant), site, zoneID)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var zone ShippingZone
+	if err := json.Unmarshal(bodyBytes, &zone); err != nil {
+		return nil, fmt.Errorf("error decoding shipping zone: %w", err)
+	}
+
+	return &zone, nil
+}
+
+// ListShippingZones retrieves all shipping zones for a site
+func (c *EmporixClient) ListShippingZones(ctx context.Context, site string) ([]ShippingZone, error) {
+	// Lock for this tenant's shipping zone operations
+	mu := getShippingZoneMutex(c.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := fmt.Sprintf("/shipping/%s/%s/zones", strings.ToLower(c.Tenant), site)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var zones []ShippingZone
+	if err := json.Unmarshal(bodyBytes, &zones); err != nil {
+		return nil, fmt.Errorf("error decoding shipping zones list: %w", err)
+	}
+
+	return zones, nil
+}
+
+// UpdateShippingZone updates a shipping zone
+func (c *EmporixClient) UpdateShippingZone(ctx context.Context, site, zoneID string, zone *ShippingZone) (*ShippingZone, error) {
+	// Lock for this tenant's shipping zone operations
+	mu := getShippingZoneMutex(c.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := fmt.Sprintf("/shipping/%s/%s/zones/%s", strings.ToLower(c.Tenant), site, zoneID)
+
+	resp, err := c.doRequest(ctx, "PUT", path, zone, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	// Accept both 200 OK and 204 No Content for successful updates
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// If response is 204 No Content or empty body, return nil
+	// The caller will do a GET to retrieve the actual state
+	if resp.StatusCode == http.StatusNoContent || len(bodyBytes) == 0 {
+		return nil, nil
+	}
+
+	var updatedZone ShippingZone
+	if err := json.Unmarshal(bodyBytes, &updatedZone); err != nil {
+		// If unmarshal fails but update was successful, return nil
+		// The caller will do a GET to retrieve the actual state
+		tflog.Debug(ctx, "Failed to unmarshal update response, will rely on read-after-write", map[string]interface{}{
+			"error": err.Error(),
+			"body":  string(bodyBytes),
+		})
+		return nil, nil
+	}
+
+	return &updatedZone, nil
+}
+
+// DeleteShippingZone deletes a shipping zone
+func (c *EmporixClient) DeleteShippingZone(ctx context.Context, site, zoneID string) error {
+	// Lock for this tenant's shipping zone operations
+	mu := getShippingZoneMutex(c.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := fmt.Sprintf("/shipping/%s/%s/zones/%s", strings.ToLower(c.Tenant), site, zoneID)
 
 	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
 	if err != nil {
