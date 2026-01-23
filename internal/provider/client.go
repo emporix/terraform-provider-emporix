@@ -876,3 +876,157 @@ func (c *EmporixClient) DeleteShippingZone(ctx context.Context, site, zoneID str
 
 	return nil
 }
+
+// DeliveryTime represents a delivery time configuration
+type DeliveryTime struct {
+	ID               string             `json:"id,omitempty"`
+	SiteCode         string             `json:"siteCode"`
+	Name             string             `json:"name"`
+	IsDeliveryDay    bool               `json:"isDeliveryDay"`
+	ZoneID           string             `json:"zoneId"`
+	Day              *DeliveryDay       `json:"day,omitempty"`
+	IsForAllZones    bool               `json:"isForAllZones"`
+	TimeZoneID       string             `json:"timeZoneId"`
+	DeliveryDayShift int                `json:"deliveryDayShift"`
+	Slots            []DeliveryTimeSlot `json:"slots,omitempty"`
+}
+
+// DeliveryDay represents the day configuration
+type DeliveryDay struct {
+	Weekday string `json:"weekday"` // MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
+}
+
+// DeliveryTimeSlot represents a delivery time slot
+type DeliveryTimeSlot struct {
+	ShippingMethod    string      `json:"shippingMethod"`
+	DeliveryTimeRange *TimeRange  `json:"deliveryTimeRange"`
+	CutOffTime        *CutOffTime `json:"cutOffTime,omitempty"`
+	Capacity          int         `json:"capacity"`
+}
+
+// TimeRange represents a time range
+type TimeRange struct {
+	TimeFrom string `json:"timeFrom"` // HH:MM format
+	TimeTo   string `json:"timeTo"`   // HH:MM format
+}
+
+// CutOffTime represents the cutoff time configuration
+type CutOffTime struct {
+	Time              string `json:"time"` // ISO 8601 format
+	DeliveryCycleName string `json:"deliveryCycleName"`
+}
+
+// CreateDeliveryTime creates a new delivery time
+func (c *EmporixClient) CreateDeliveryTime(ctx context.Context, deliveryTime *DeliveryTime) (*DeliveryTime, error) {
+	path := fmt.Sprintf("/shipping/%s/delivery-times", strings.ToLower(c.Tenant))
+
+	resp, err := c.doRequest(ctx, "POST", path, deliveryTime, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	// Accept both 201 Created and 200 OK
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	// If response body is empty, return nil
+	if len(bodyBytes) == 0 {
+		return nil, nil
+	}
+
+	var createdDeliveryTime DeliveryTime
+	if err := json.Unmarshal(bodyBytes, &createdDeliveryTime); err != nil {
+		tflog.Debug(ctx, "Failed to unmarshal create response, will rely on read-after-write", map[string]interface{}{
+			"error": err.Error(),
+			"body":  string(bodyBytes),
+		})
+		return nil, nil
+	}
+
+	return &createdDeliveryTime, nil
+}
+
+// GetDeliveryTime retrieves a delivery time by ID
+func (c *EmporixClient) GetDeliveryTime(ctx context.Context, id string) (*DeliveryTime, error) {
+	path := fmt.Sprintf("/shipping/%s/delivery-times/%s", strings.ToLower(c.Tenant), id)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var deliveryTime DeliveryTime
+	if err := json.Unmarshal(bodyBytes, &deliveryTime); err != nil {
+		return nil, fmt.Errorf("error decoding delivery time: %w", err)
+	}
+
+	return &deliveryTime, nil
+}
+
+// UpdateDeliveryTime updates a delivery time
+func (c *EmporixClient) UpdateDeliveryTime(ctx context.Context, id string, deliveryTime *DeliveryTime) (*DeliveryTime, error) {
+	path := fmt.Sprintf("/shipping/%s/delivery-times/%s", strings.ToLower(c.Tenant), id)
+
+	resp, err := c.doRequest(ctx, "PUT", path, deliveryTime, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	// Accept both 200 OK and 204 No Content
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// If response is 204 No Content or empty body, return nil
+	if resp.StatusCode == http.StatusNoContent || len(bodyBytes) == 0 {
+		return nil, nil
+	}
+
+	var updatedDeliveryTime DeliveryTime
+	if err := json.Unmarshal(bodyBytes, &updatedDeliveryTime); err != nil {
+		tflog.Debug(ctx, "Failed to unmarshal update response, will rely on read-after-write", map[string]interface{}{
+			"error": err.Error(),
+			"body":  string(bodyBytes),
+		})
+		return nil, nil
+	}
+
+	return &updatedDeliveryTime, nil
+}
+
+// DeleteDeliveryTime deletes a delivery time
+func (c *EmporixClient) DeleteDeliveryTime(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/shipping/%s/delivery-times/%s", strings.ToLower(c.Tenant), id)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK); err != nil {
+		return err
+	}
+
+	return nil
+}
