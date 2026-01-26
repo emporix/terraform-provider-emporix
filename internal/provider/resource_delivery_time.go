@@ -69,6 +69,47 @@ type CutOffTimeModel struct {
 	DeliveryCycleName types.String `tfsdk:"delivery_cycle_name"`
 }
 
+// API structs for DeliveryTime
+
+// DeliveryTime represents a delivery time configuration
+type DeliveryTime struct {
+	ID               string             `json:"id,omitempty"`
+	SiteCode         string             `json:"siteCode"`
+	Name             string             `json:"name"`
+	IsDeliveryDay    bool               `json:"isDeliveryDay"`
+	ZoneID           string             `json:"zoneId,omitempty"`
+	Day              *DeliveryDay       `json:"day,omitempty"`
+	IsForAllZones    bool               `json:"isForAllZones"`
+	TimeZoneID       string             `json:"timeZoneId"`
+	DeliveryDayShift int                `json:"deliveryDayShift"`
+	Slots            []DeliveryTimeSlot `json:"slots,omitempty"`
+}
+
+// DeliveryDay represents the day configuration
+type DeliveryDay struct {
+	Weekday string `json:"weekday"` // MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
+}
+
+// DeliveryTimeSlot represents a delivery time slot
+type DeliveryTimeSlot struct {
+	ShippingMethod    string      `json:"shippingMethod"`
+	DeliveryTimeRange *TimeRange  `json:"deliveryTimeRange"`
+	CutOffTime        *CutOffTime `json:"cutOffTime,omitempty"`
+	Capacity          int         `json:"capacity"`
+}
+
+// TimeRange represents a time range
+type TimeRange struct {
+	TimeFrom string `json:"timeFrom"` // HH:MM format
+	TimeTo   string `json:"timeTo"`   // HH:MM format
+}
+
+// CutOffTime represents the cutoff time configuration
+type CutOffTime struct {
+	Time              string `json:"time"` // ISO 8601 format
+	DeliveryCycleName string `json:"deliveryCycleName"`
+}
+
 func (r *DeliveryTimeResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_delivery_time"
 }
@@ -235,8 +276,8 @@ func (r *DeliveryTimeResource) Create(ctx context.Context, req resource.CreateRe
 		DeliveryDayShift: int(data.DeliveryDayShift.ValueInt64()),
 	}
 
-	// Set zone_id if provided
-	if !data.ZoneID.IsNull() {
+	// Set zone_id if provided and not using is_for_all_zones
+	if !data.ZoneID.IsNull() && !data.IsForAllZones.ValueBool() {
 		deliveryTime.ZoneID = data.ZoneID.ValueString()
 	}
 
@@ -397,7 +438,8 @@ func (r *DeliveryTimeResource) Update(ctx context.Context, req resource.UpdateRe
 		DeliveryDayShift: int(data.DeliveryDayShift.ValueInt64()),
 	}
 
-	if !data.ZoneID.IsNull() {
+	// Set zone_id if provided and not using is_for_all_zones
+	if !data.ZoneID.IsNull() && !data.IsForAllZones.ValueBool() {
 		deliveryTime.ZoneID = data.ZoneID.ValueString()
 	}
 

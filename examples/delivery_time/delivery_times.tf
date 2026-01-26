@@ -66,13 +66,96 @@ resource "emporix_shipping_zone" "metro" {
   ]
 }
 
+# Shipping methods required for delivery time slots
+resource "emporix_shipping_method" "standard_downtown" {
+  id      = "standard-shipping"
+  site    = "main"
+  zone_id = emporix_shipping_zone.downtown.id
+
+  name = {
+    en = "Standard Shipping"
+    pl = "Dostawa Standardowa"
+  }
+
+  active = true
+
+  fees = [
+    {
+      min_order_value = {
+        amount   = 0
+        currency = "PLN"
+      }
+      cost = {
+        amount   = 15.00
+        currency = "PLN"
+      }
+    }
+  ]
+
+  depends_on = [emporix_shipping_zone.downtown]
+}
+
+resource "emporix_shipping_method" "express_downtown" {
+  id      = "express-shipping"
+  site    = "main"
+  zone_id = emporix_shipping_zone.downtown.id
+
+  name = {
+    en = "Express Shipping"
+    pl = "Dostawa Ekspresowa"
+  }
+
+  active = true
+
+  fees = [
+    {
+      min_order_value = {
+        amount   = 0
+        currency = "PLN"
+      }
+      cost = {
+        amount   = 25.00
+        currency = "PLN"
+      }
+    }
+  ]
+
+  depends_on = [emporix_shipping_zone.downtown]
+}
+
+resource "emporix_shipping_method" "standard_metro" {
+  id      = "standard-shipping"
+  site    = "main"
+  zone_id = emporix_shipping_zone.metro.id
+
+  name = {
+    en = "Standard Shipping"
+  }
+
+  active = true
+
+  fees = [
+    {
+      min_order_value = {
+        amount   = 0
+        currency = "USD"
+      }
+      cost = {
+        amount   = 9.99
+        currency = "USD"
+      }
+    }
+  ]
+
+  depends_on = [emporix_shipping_zone.metro]
+}
+
 # Friday delivery with morning and afternoon slots
 resource "emporix_delivery_time" "friday_delivery" {
   name               = "friday-delivery-slots"
   site_code          = "main"
   is_delivery_day    = true
   zone_id            = emporix_shipping_zone.downtown.id
-  is_for_all_zones   = false
   time_zone_id       = "Europe/Warsaw"
   delivery_day_shift = 0
 
@@ -81,9 +164,9 @@ resource "emporix_delivery_time" "friday_delivery" {
   }
 
   slots = [
-    # Morning slot (10:00-12:00)
+    # Morning slot (10:00-12:00) with standard shipping
     {
-      shipping_method = "standard"
+      shipping_method = emporix_shipping_method.standard_downtown.id
       capacity        = 50
 
       delivery_time_range = {
@@ -96,10 +179,10 @@ resource "emporix_delivery_time" "friday_delivery" {
         delivery_cycle_name = "morning"
       }
     },
-    # Afternoon slot (14:00-16:00)
+    # Afternoon slot (14:00-16:00) with express shipping
     {
-      shipping_method = "standard"
-      capacity        = 50
+      shipping_method = emporix_shipping_method.express_downtown.id
+      capacity        = 30
 
       delivery_time_range = {
         time_from = "14:00:00"
@@ -113,15 +196,19 @@ resource "emporix_delivery_time" "friday_delivery" {
     }
   ]
 
-  depends_on = [emporix_shipping_zone.downtown]
+  depends_on = [
+    emporix_shipping_zone.downtown,
+    emporix_shipping_method.standard_downtown,
+    emporix_shipping_method.express_downtown
+  ]
 }
 
-# Saturday delivery - single large slot for all zones
+# Saturday delivery - single large slot
 resource "emporix_delivery_time" "saturday_delivery" {
-  name               = "saturday-all-zones"
+  name               = "saturday-delivery"
   site_code          = "main"
   is_delivery_day    = true
-  is_for_all_zones   = true
+  zone_id            = emporix_shipping_zone.downtown.id
   time_zone_id       = "Europe/Warsaw"
   delivery_day_shift = 0
 
@@ -131,7 +218,7 @@ resource "emporix_delivery_time" "saturday_delivery" {
 
   slots = [
     {
-      shipping_method = "standard"
+      shipping_method = emporix_shipping_method.standard_downtown.id
       capacity        = 100
 
       delivery_time_range = {
@@ -144,6 +231,11 @@ resource "emporix_delivery_time" "saturday_delivery" {
         delivery_cycle_name = "saturday"
       }
     }
+  ]
+
+  depends_on = [
+    emporix_shipping_zone.downtown,
+    emporix_shipping_method.standard_downtown
   ]
 }
 
@@ -162,7 +254,7 @@ resource "emporix_delivery_time" "express_next_day" {
 
   slots = [
     {
-      shipping_method = "express"
+      shipping_method = emporix_shipping_method.standard_metro.id
       capacity        = 30
 
       delivery_time_range = {
@@ -177,7 +269,10 @@ resource "emporix_delivery_time" "express_next_day" {
     }
   ]
 
-  depends_on = [emporix_shipping_zone.metro]
+  depends_on = [
+    emporix_shipping_zone.metro,
+    emporix_shipping_method.standard_metro
+  ]
 }
 
 # Output delivery time names for reference
@@ -195,5 +290,14 @@ output "shipping_zone_ids" {
   value = {
     downtown = emporix_shipping_zone.downtown.id
     metro    = emporix_shipping_zone.metro.id
+  }
+}
+
+output "shipping_method_ids" {
+  description = "Created shipping method IDs"
+  value = {
+    standard_downtown = emporix_shipping_method.standard_downtown.id
+    express_downtown  = emporix_shipping_method.express_downtown.id
+    standard_metro    = emporix_shipping_method.standard_metro.id
   }
 }

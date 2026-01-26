@@ -710,20 +710,6 @@ func (c *EmporixClient) DeleteTenantConfiguration(ctx context.Context, key strin
 	return nil
 }
 
-// ShippingZone represents a shipping zone
-type ShippingZone struct {
-	ID      string                `json:"id"`
-	Name    interface{}           `json:"name"`
-	Default bool                  `json:"default,omitempty"`
-	ShipTo  []ShippingDestination `json:"shipTo"`
-}
-
-// ShippingDestination represents a shipping destination
-type ShippingDestination struct {
-	Country    string `json:"country"`
-	PostalCode string `json:"postalCode,omitempty"`
-}
-
 // CreateShippingZone creates a new shipping zone
 func (c *EmporixClient) CreateShippingZone(ctx context.Context, site string, zone *ShippingZone) (*ShippingZone, error) {
 	// Lock for this tenant's shipping zone operations
@@ -895,44 +881,6 @@ func (c *EmporixClient) DeleteShippingZone(ctx context.Context, site, zoneID str
 }
 
 // DeliveryTime represents a delivery time configuration
-type DeliveryTime struct {
-	ID               string             `json:"id,omitempty"`
-	SiteCode         string             `json:"siteCode"`
-	Name             string             `json:"name"`
-	IsDeliveryDay    bool               `json:"isDeliveryDay"`
-	ZoneID           string             `json:"zoneId"`
-	Day              *DeliveryDay       `json:"day,omitempty"`
-	IsForAllZones    bool               `json:"isForAllZones"`
-	TimeZoneID       string             `json:"timeZoneId"`
-	DeliveryDayShift int                `json:"deliveryDayShift"`
-	Slots            []DeliveryTimeSlot `json:"slots,omitempty"`
-}
-
-// DeliveryDay represents the day configuration
-type DeliveryDay struct {
-	Weekday string `json:"weekday"` // MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
-}
-
-// DeliveryTimeSlot represents a delivery time slot
-type DeliveryTimeSlot struct {
-	ShippingMethod    string      `json:"shippingMethod"`
-	DeliveryTimeRange *TimeRange  `json:"deliveryTimeRange"`
-	CutOffTime        *CutOffTime `json:"cutOffTime,omitempty"`
-	Capacity          int         `json:"capacity"`
-}
-
-// TimeRange represents a time range
-type TimeRange struct {
-	TimeFrom string `json:"timeFrom"` // HH:MM format
-	TimeTo   string `json:"timeTo"`   // HH:MM format
-}
-
-// CutOffTime represents the cutoff time configuration
-type CutOffTime struct {
-	Time              string `json:"time"` // ISO 8601 format
-	DeliveryCycleName string `json:"deliveryCycleName"`
-}
-
 // CreateDeliveryTime creates a new delivery time
 func (c *EmporixClient) CreateDeliveryTime(ctx context.Context, deliveryTime *DeliveryTime) (*DeliveryTime, error) {
 	path := fmt.Sprintf("/shipping/%s/delivery-times", strings.ToLower(c.Tenant))
@@ -1049,29 +997,6 @@ func (c *EmporixClient) DeleteDeliveryTime(ctx context.Context, id string) error
 }
 
 // ShippingMethod represents a shipping method
-type ShippingMethod struct {
-	ID              string          `json:"id"`
-	Name            interface{}     `json:"name"` // string or map[string]string
-	Active          bool            `json:"active"`
-	MaxOrderValue   *MonetaryAmount `json:"maxOrderValue,omitempty"`
-	Fees            []ShippingFee   `json:"fees"`
-	ShippingTaxCode string          `json:"shippingTaxCode,omitempty"`
-	ShippingGroupID string          `json:"shippingGroupId,omitempty"`
-}
-
-// ShippingFee represents a shipping fee configuration
-type ShippingFee struct {
-	MinOrderValue   *MonetaryAmount `json:"minOrderValue"`
-	Cost            *MonetaryAmount `json:"cost"`
-	ShippingGroupID string          `json:"shippingGroupId,omitempty"`
-}
-
-// MonetaryAmount represents an amount of money
-type MonetaryAmount struct {
-	Amount   float64 `json:"amount"`
-	Currency string  `json:"currency"`
-}
-
 // CreateShippingMethod creates a new shipping method
 func (c *EmporixClient) CreateShippingMethod(ctx context.Context, site, zoneID string, shippingMethod *ShippingMethod) (*ShippingMethod, error) {
 	// Lock for this tenant's shipping method operations

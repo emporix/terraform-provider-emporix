@@ -22,7 +22,7 @@ func TestAccDeliveryTimeResource_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "name", "friday-slots"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "site_code", "main"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "is_delivery_day", "true"),
-					resource.TestCheckResourceAttr("emporix_delivery_time.test", "zone_id", "zone1"),
+					resource.TestCheckResourceAttr("emporix_delivery_time.test", "zone_id", "zone-test"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "time_zone_id", "Europe/Warsaw"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "day.weekday", "FRIDAY"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.#", "1"),
@@ -44,9 +44,9 @@ func TestAccDeliveryTimeResource_multipleSlots(t *testing.T) {
 					resource.TestCheckResourceAttrSet("emporix_delivery_time.test", "id"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "name", "saturday-slots"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.#", "2"),
-					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.0.shipping_method", "standard"),
+					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.0.shipping_method", "standard-shipping"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.0.capacity", "50"),
-					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.1.shipping_method", "express"),
+					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.1.shipping_method", "express-shipping"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.1.capacity", "30"),
 				),
 			},
@@ -54,18 +54,19 @@ func TestAccDeliveryTimeResource_multipleSlots(t *testing.T) {
 	})
 }
 
-func TestAccDeliveryTimeResource_allZones(t *testing.T) {
+func TestAccDeliveryTimeResource_nextDay(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckDeliveryTimeDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDeliveryTimeResourceConfig_allZones(),
+				Config: testAccDeliveryTimeResourceConfig_nextDay(),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("emporix_delivery_time.test", "id"),
-					resource.TestCheckResourceAttr("emporix_delivery_time.test", "name", "all-zones-delivery"),
-					resource.TestCheckResourceAttr("emporix_delivery_time.test", "is_for_all_zones", "true"),
+					resource.TestCheckResourceAttr("emporix_delivery_time.test", "name", "monday-delivery"),
+					resource.TestCheckResourceAttr("emporix_delivery_time.test", "zone_id", "zone-test"),
+					resource.TestCheckResourceAttr("emporix_delivery_time.test", "delivery_day_shift", "1"),
 				),
 			},
 		},
@@ -130,13 +131,52 @@ func testAccCheckDeliveryTimeDestroy(s *terraform.State) error {
 
 func testAccDeliveryTimeResourceConfig_basic() string {
 	return `
+resource "emporix_shipping_zone" "test" {
+  id   = "zone-test"
+  site = "main"
+
+  name = {
+    en = "Test Zone"
+  }
+
+  ship_to = [
+    { country = "PL" }
+  ]
+}
+
+resource "emporix_shipping_method" "test" {
+  id      = "standard-shipping"
+  site    = "main"
+  zone_id = emporix_shipping_zone.test.id
+
+  name = {
+    en = "Standard Shipping"
+  }
+
+  active = true
+
+  fees = [
+    {
+      min_order_value = {
+        amount   = 0
+        currency = "PLN"
+      }
+      cost = {
+        amount   = 15.00
+        currency = "PLN"
+      }
+    }
+  ]
+
+  depends_on = [emporix_shipping_zone.test]
+}
+
 resource "emporix_delivery_time" "test" {
   name               = "friday-slots"
   site_code          = "main"
   is_delivery_day    = true
-  zone_id            = "zone1"
+  zone_id            = emporix_shipping_zone.test.id
   time_zone_id       = "Europe/Warsaw"
-  is_for_all_zones   = false
   delivery_day_shift = 0
 
   day = {
@@ -145,7 +185,7 @@ resource "emporix_delivery_time" "test" {
 
   slots = [
     {
-      shipping_method = "standard"
+      shipping_method = emporix_shipping_method.test.id
       capacity        = 100
 
       delivery_time_range = {
@@ -159,19 +199,63 @@ resource "emporix_delivery_time" "test" {
       }
     }
   ]
+
+  depends_on = [
+    emporix_shipping_zone.test,
+    emporix_shipping_method.test
+  ]
 }
 `
 }
 
 func testAccDeliveryTimeResourceConfig_updated() string {
 	return `
+resource "emporix_shipping_zone" "test" {
+  id   = "zone-test"
+  site = "main"
+
+  name = {
+    en = "Test Zone"
+  }
+
+  ship_to = [
+    { country = "PL" }
+  ]
+}
+
+resource "emporix_shipping_method" "test" {
+  id      = "standard-shipping"
+  site    = "main"
+  zone_id = emporix_shipping_zone.test.id
+
+  name = {
+    en = "Standard Shipping"
+  }
+
+  active = true
+
+  fees = [
+    {
+      min_order_value = {
+        amount   = 0
+        currency = "PLN"
+      }
+      cost = {
+        amount   = 15.00
+        currency = "PLN"
+      }
+    }
+  ]
+
+  depends_on = [emporix_shipping_zone.test]
+}
+
 resource "emporix_delivery_time" "test" {
   name               = "friday-slots"
   site_code          = "main"
   is_delivery_day    = true
-  zone_id            = "zone1"
+  zone_id            = emporix_shipping_zone.test.id
   time_zone_id       = "Europe/Warsaw"
-  is_for_all_zones   = false
   delivery_day_shift = 0
 
   day = {
@@ -180,7 +264,7 @@ resource "emporix_delivery_time" "test" {
 
   slots = [
     {
-      shipping_method = "standard"
+      shipping_method = emporix_shipping_method.test.id
       capacity        = 150
 
       delivery_time_range = {
@@ -194,17 +278,89 @@ resource "emporix_delivery_time" "test" {
       }
     }
   ]
+
+  depends_on = [
+    emporix_shipping_zone.test,
+    emporix_shipping_method.test
+  ]
 }
 `
 }
 
 func testAccDeliveryTimeResourceConfig_multipleSlots() string {
 	return `
+resource "emporix_shipping_zone" "test" {
+  id   = "zone-test"
+  site = "main"
+
+  name = {
+    en = "Test Zone"
+  }
+
+  ship_to = [
+    { country = "PL" }
+  ]
+}
+
+resource "emporix_shipping_method" "standard" {
+  id      = "standard-shipping"
+  site    = "main"
+  zone_id = emporix_shipping_zone.test.id
+
+  name = {
+    en = "Standard Shipping"
+  }
+
+  active = true
+
+  fees = [
+    {
+      min_order_value = {
+        amount   = 0
+        currency = "PLN"
+      }
+      cost = {
+        amount   = 15.00
+        currency = "PLN"
+      }
+    }
+  ]
+
+  depends_on = [emporix_shipping_zone.test]
+}
+
+resource "emporix_shipping_method" "express" {
+  id      = "express-shipping"
+  site    = "main"
+  zone_id = emporix_shipping_zone.test.id
+
+  name = {
+    en = "Express Shipping"
+  }
+
+  active = true
+
+  fees = [
+    {
+      min_order_value = {
+        amount   = 0
+        currency = "PLN"
+      }
+      cost = {
+        amount   = 25.00
+        currency = "PLN"
+      }
+    }
+  ]
+
+  depends_on = [emporix_shipping_zone.test]
+}
+
 resource "emporix_delivery_time" "test" {
   name               = "saturday-slots"
   site_code          = "main"
   is_delivery_day    = true
-  zone_id            = "zone1"
+  zone_id            = emporix_shipping_zone.test.id
   time_zone_id       = "Europe/Warsaw"
   delivery_day_shift = 0
 
@@ -214,7 +370,7 @@ resource "emporix_delivery_time" "test" {
 
   slots = [
     {
-      shipping_method = "standard"
+      shipping_method = emporix_shipping_method.standard.id
       capacity        = 50
 
       delivery_time_range = {
@@ -228,7 +384,7 @@ resource "emporix_delivery_time" "test" {
       }
     },
     {
-      shipping_method = "express"
+      shipping_method = emporix_shipping_method.express.id
       capacity        = 30
 
       delivery_time_range = {
@@ -242,17 +398,63 @@ resource "emporix_delivery_time" "test" {
       }
     }
   ]
+
+  depends_on = [
+    emporix_shipping_zone.test,
+    emporix_shipping_method.standard,
+    emporix_shipping_method.express
+  ]
 }
 `
 }
 
-func testAccDeliveryTimeResourceConfig_allZones() string {
+func testAccDeliveryTimeResourceConfig_nextDay() string {
 	return `
+resource "emporix_shipping_zone" "test" {
+  id   = "zone-test"
+  site = "main"
+
+  name = {
+    en = "Test Zone"
+  }
+
+  ship_to = [
+    { country = "US" }
+  ]
+}
+
+resource "emporix_shipping_method" "test" {
+  id      = "standard-shipping"
+  site    = "main"
+  zone_id = emporix_shipping_zone.test.id
+
+  name = {
+    en = "Standard Shipping"
+  }
+
+  active = true
+
+  fees = [
+    {
+      min_order_value = {
+        amount   = 0
+        currency = "USD"
+      }
+      cost = {
+        amount   = 9.99
+        currency = "USD"
+      }
+    }
+  ]
+
+  depends_on = [emporix_shipping_zone.test]
+}
+
 resource "emporix_delivery_time" "test" {
-  name               = "all-zones-delivery"
+  name               = "monday-delivery"
   site_code          = "main"
   is_delivery_day    = true
-  is_for_all_zones   = true
+  zone_id            = emporix_shipping_zone.test.id
   time_zone_id       = "America/New_York"
   delivery_day_shift = 1
 
@@ -262,14 +464,24 @@ resource "emporix_delivery_time" "test" {
 
   slots = [
     {
-      shipping_method = "standard"
+      shipping_method = emporix_shipping_method.test.id
       capacity        = 200
 
       delivery_time_range = {
         time_from = "08:00:00"
         time_to   = "18:00:00"
       }
+
+      cut_off_time = {
+        time                = "2023-06-11T15:00:00.000Z"
+        delivery_cycle_name = "next-day"
+      }
     }
+  ]
+
+  depends_on = [
+    emporix_shipping_zone.test,
+    emporix_shipping_method.test
   ]
 }
 `

@@ -55,6 +55,32 @@ type ShippingFeeModel struct {
 	ShippingGroupID types.String `tfsdk:"shipping_group_id"`
 }
 
+// API structs for ShippingMethod
+
+// ShippingMethod represents a shipping method
+type ShippingMethod struct {
+	ID              string          `json:"id"`
+	Name            interface{}     `json:"name"` // string or map[string]string
+	Active          bool            `json:"active"`
+	MaxOrderValue   *MonetaryAmount `json:"maxOrderValue,omitempty"`
+	Fees            []ShippingFee   `json:"fees"`
+	ShippingTaxCode string          `json:"shippingTaxCode,omitempty"`
+	ShippingGroupID string          `json:"shippingGroupId,omitempty"`
+}
+
+// ShippingFee represents a shipping fee configuration
+type ShippingFee struct {
+	MinOrderValue   *MonetaryAmount `json:"minOrderValue"`
+	Cost            *MonetaryAmount `json:"cost"`
+	ShippingGroupID string          `json:"shippingGroupId,omitempty"`
+}
+
+// MonetaryAmount represents an amount of money
+type MonetaryAmount struct {
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"`
+}
+
 func (r *ShippingMethodResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_shipping_method"
 }
