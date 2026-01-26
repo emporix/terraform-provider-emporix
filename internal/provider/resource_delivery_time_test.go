@@ -223,7 +223,7 @@ resource "emporix_delivery_time" "test" {
       }
 
       cut_off_time = {
-        time                = "2023-06-13T08:00:00.000Z"
+        time                = "2023-06-13T06:00:00.000Z"
         delivery_cycle_name = "morning"
       }
     },
@@ -237,7 +237,7 @@ resource "emporix_delivery_time" "test" {
       }
 
       cut_off_time = {
-        time                = "2023-06-13T12:00:00.000Z"
+        time                = "2023-06-13T11:00:00.000Z"
         delivery_cycle_name = "afternoon"
       }
     }

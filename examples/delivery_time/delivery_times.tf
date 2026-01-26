@@ -92,7 +92,7 @@ resource "emporix_delivery_time" "friday_delivery" {
       }
 
       cut_off_time = {
-        time                = "2023-06-12T18:00:00.000Z"
+        time                = "2023-06-12T06:00:00.000Z"
         delivery_cycle_name = "morning"
       }
     },
@@ -107,7 +107,7 @@ resource "emporix_delivery_time" "friday_delivery" {
       }
 
       cut_off_time = {
-        time                = "2023-06-13T10:00:00.000Z"
+        time                = "2023-06-12T10:00:00.000Z"
         delivery_cycle_name = "afternoon"
       }
     }
@@ -140,7 +140,7 @@ resource "emporix_delivery_time" "saturday_delivery" {
       }
 
       cut_off_time = {
-        time                = "2023-06-13T20:00:00.000Z"
+        time                = "2023-06-12T20:00:00.000Z"
         delivery_cycle_name = "saturday"
       }
     }
@@ -171,7 +171,7 @@ resource "emporix_delivery_time" "express_next_day" {
       }
 
       cut_off_time = {
-        time                = "2023-06-12T15:00:00.000Z"
+        time                = "2023-06-11T15:00:00.000Z"
         delivery_cycle_name = "express"
       }
     }

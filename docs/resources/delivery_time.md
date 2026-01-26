@@ -67,7 +67,7 @@ resource "emporix_delivery_time" "friday_morning" {
       }
 
       cut_off_time = {
-        time                = "2023-06-12T18:00:00.000Z"
+        time                = "2023-06-12T06:00:00.000Z"
         delivery_cycle_name = "morning"
       }
     }
@@ -116,7 +116,7 @@ resource "emporix_delivery_time" "saturday_delivery" {
       }
 
       cut_off_time = {
-        time                = "2023-06-13T08:00:00.000Z"
+        time                = "2023-06-13T06:00:00.000Z"
         delivery_cycle_name = "morning"
       }
     },
@@ -131,7 +131,7 @@ resource "emporix_delivery_time" "saturday_delivery" {
       }
 
       cut_off_time = {
-        time                = "2023-06-13T12:00:00.000Z"
+        time                = "2023-06-13T11:00:00.000Z"
         delivery_cycle_name = "afternoon"
       }
     }
@@ -207,7 +207,7 @@ resource "emporix_delivery_time" "next_day_express" {
       }
 
       cut_off_time = {
-        time                = "2023-06-12T15:00:00.000Z"
+        time                = "2023-06-11T15:00:00.000Z"
         delivery_cycle_name = "next-day"
       }
     }
@@ -356,6 +356,45 @@ The `weekday` field accepts these exact values (case-sensitive):
 - FRIDAY
 - SATURDAY
 - SUNDAY
+
+### Cut-off Time Validation
+
+**IMPORTANT**: The cut-off time must be BEFORE the delivery window starts (`time_from`), not after it ends.
+
+**Valid Example**:
+```terraform
+delivery_time_range = {
+  time_from = "10:00:00"  # Delivery starts at 10:00
+  time_to   = "12:00:00"  # Delivery ends at 12:00
+}
+
+cut_off_time = {
+  time = "2023-06-12T06:00:00.000Z"  # ✅ Cut-off at 06:00 (before 10:00)
+}
+```
+
+**Invalid Example**:
+```terraform
+delivery_time_range = {
+  time_from = "10:00:00"
+  time_to   = "12:00:00"
+}
+
+cut_off_time = {
+  time = "2023-06-12T18:00:00.000Z"  # ❌ ERROR: 18:00 is after 12:00
+}
+```
+
+**Error Message**:
+```
+CutOff time cannot be after timeTo
+```
+
+**Guidelines**:
+- Morning slot (10:00-12:00): Set cut-off to early morning (e.g., 06:00) same day or previous evening
+- Afternoon slot (14:00-16:00): Set cut-off to late morning (e.g., 11:00) same day
+- All-day slot (09:00-17:00): Set cut-off to previous evening (e.g., 20:00 day before)
+- Next-day delivery: Set cut-off to afternoon/evening of the previous day (e.g., 15:00 day before)
 
 ### Time Formats
 
