@@ -367,13 +367,15 @@ func (r *ShippingMethodResource) toAPIModel(ctx context.Context, model *Shipping
 
 	// Convert name map
 	nameMap := make(map[string]string)
-	model.Name.ElementsAs(ctx, &nameMap, false)
+	d := model.Name.ElementsAs(ctx, &nameMap, false)
+	diags.Append(d...)
 	apiMethod.Name = nameMap
 
 	// Convert max order value
 	if !model.MaxOrderValue.IsNull() {
 		var maxOrderValue MonetaryAmountModel
-		model.MaxOrderValue.As(ctx, &maxOrderValue, basetypes.ObjectAsOptions{})
+		d := model.MaxOrderValue.As(ctx, &maxOrderValue, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
 		apiMethod.MaxOrderValue = &MonetaryAmount{
 			Amount:   maxOrderValue.Amount.ValueFloat64(),
 			Currency: maxOrderValue.Currency.ValueString(),
@@ -382,15 +384,18 @@ func (r *ShippingMethodResource) toAPIModel(ctx context.Context, model *Shipping
 
 	// Convert fees
 	var feeModels []ShippingFeeModel
-	model.Fees.ElementsAs(ctx, &feeModels, false)
+	d = model.Fees.ElementsAs(ctx, &feeModels, false)
+	diags.Append(d...)
 
 	apiFees := make([]ShippingFee, 0, len(feeModels))
 	for _, feeModel := range feeModels {
 		var minOrderValue MonetaryAmountModel
-		feeModel.MinOrderValue.As(ctx, &minOrderValue, basetypes.ObjectAsOptions{})
+		d = feeModel.MinOrderValue.As(ctx, &minOrderValue, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
 
 		var cost MonetaryAmountModel
-		feeModel.Cost.As(ctx, &cost, basetypes.ObjectAsOptions{})
+		d = feeModel.Cost.As(ctx, &cost, basetypes.ObjectAsOptions{})
+		diags.Append(d...)
 
 		apiFee := ShippingFee{
 			MinOrderValue: &MonetaryAmount{
@@ -430,7 +435,9 @@ func (r *ShippingMethodResource) syncModelFromAPI(ctx context.Context, model *Sh
 	switch nameVal := api.Name.(type) {
 	case string:
 		nameMap := map[string]string{"en": nameVal}
-		model.Name, _ = types.MapValueFrom(ctx, types.StringType, nameMap)
+		nameValue, d := types.MapValueFrom(ctx, types.StringType, nameMap)
+		diags.Append(d...)
+		model.Name = nameValue
 	case map[string]interface{}:
 		nameMap := make(map[string]string)
 		for k, v := range nameVal {
@@ -438,7 +445,9 @@ func (r *ShippingMethodResource) syncModelFromAPI(ctx context.Context, model *Sh
 				nameMap[k] = str
 			}
 		}
-		model.Name, _ = types.MapValueFrom(ctx, types.StringType, nameMap)
+		nameValue, d := types.MapValueFrom(ctx, types.StringType, nameMap)
+		diags.Append(d...)
+		model.Name = nameValue
 	}
 
 	// Max order value
@@ -447,7 +456,9 @@ func (r *ShippingMethodResource) syncModelFromAPI(ctx context.Context, model *Sh
 			Amount:   types.Float64Value(api.MaxOrderValue.Amount),
 			Currency: types.StringValue(api.MaxOrderValue.Currency),
 		}
-		model.MaxOrderValue, _ = types.ObjectValueFrom(ctx, maxOrderValue.AttributeTypes(), maxOrderValue)
+		maxOrderValueObj, d := types.ObjectValueFrom(ctx, maxOrderValue.AttributeTypes(), maxOrderValue)
+		diags.Append(d...)
+		model.MaxOrderValue = maxOrderValueObj
 	} else {
 		model.MaxOrderValue = types.ObjectNull(MonetaryAmountModel{}.AttributeTypes())
 	}
@@ -455,17 +466,31 @@ func (r *ShippingMethodResource) syncModelFromAPI(ctx context.Context, model *Sh
 	// Fees
 	feeModels := make([]ShippingFeeModel, 0, len(api.Fees))
 	for _, apiFee := range api.Fees {
-		minOrderValue := MonetaryAmountModel{
-			Amount:   types.Float64Value(apiFee.MinOrderValue.Amount),
-			Currency: types.StringValue(apiFee.MinOrderValue.Currency),
+		var minOrderValueObj types.Object
+		if apiFee.MinOrderValue != nil {
+			minOrderValue := MonetaryAmountModel{
+				Amount:   types.Float64Value(apiFee.MinOrderValue.Amount),
+				Currency: types.StringValue(apiFee.MinOrderValue.Currency),
+			}
+			var d diag.Diagnostics
+			minOrderValueObj, d = types.ObjectValueFrom(ctx, minOrderValue.AttributeTypes(), minOrderValue)
+			diags.Append(d...)
+		} else {
+			minOrderValueObj = types.ObjectNull(MonetaryAmountModel{}.AttributeTypes())
 		}
-		minOrderValueObj, _ := types.ObjectValueFrom(ctx, minOrderValue.AttributeTypes(), minOrderValue)
 
-		cost := MonetaryAmountModel{
-			Amount:   types.Float64Value(apiFee.Cost.Amount),
-			Currency: types.StringValue(apiFee.Cost.Currency),
+		var costObj types.Object
+		if apiFee.Cost != nil {
+			cost := MonetaryAmountModel{
+				Amount:   types.Float64Value(apiFee.Cost.Amount),
+				Currency: types.StringValue(apiFee.Cost.Currency),
+			}
+			var d diag.Diagnostics
+			costObj, d = types.ObjectValueFrom(ctx, cost.AttributeTypes(), cost)
+			diags.Append(d...)
+		} else {
+			costObj = types.ObjectNull(MonetaryAmountModel{}.AttributeTypes())
 		}
-		costObj, _ := types.ObjectValueFrom(ctx, cost.AttributeTypes(), cost)
 
 		feeModel := ShippingFeeModel{
 			MinOrderValue: minOrderValueObj,
@@ -480,7 +505,10 @@ func (r *ShippingMethodResource) syncModelFromAPI(ctx context.Context, model *Sh
 
 		feeModels = append(feeModels, feeModel)
 	}
-	model.Fees, _ = types.ListValueFrom(ctx, types.ObjectType{AttrTypes: ShippingFeeModel{}.AttributeTypes()}, feeModels)
+
+	feesList, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: ShippingFeeModel{}.AttributeTypes()}, feeModels)
+	diags.Append(d...)
+	model.Fees = feesList
 
 	if api.ShippingTaxCode != "" {
 		model.ShippingTaxCode = types.StringValue(api.ShippingTaxCode)
