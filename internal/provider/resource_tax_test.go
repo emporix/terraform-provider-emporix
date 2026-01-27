@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -186,7 +187,7 @@ resource "emporix_tax" "test" {
       code = "TEST_STANDARD"
       name = {
         en = "Standard Rate"
-        cs = "Standardní sazba"
+        de = "Standardsatz"
       }
       rate       = 0.21
       is_default = true
@@ -355,21 +356,31 @@ func testAccCheckTaxDestroy(s *terraform.State) error {
 
 		countryCode := rs.Primary.Attributes["country_code"]
 
-		// Try to get the tax
-		_, err := client.GetTax(ctx, countryCode)
+		// Retry checking if the resource is deleted with exponential backoff
+		// The Tax API may have eventual consistency
+		maxRetries := 10
+		for i := 0; i < maxRetries; i++ {
+			// Try to get the tax
+			_, err := client.GetTax(ctx, countryCode)
 
-		// If not found, resource was successfully destroyed
-		if IsNotFound(err) {
-			continue
+			// If not found, resource was successfully destroyed
+			if IsNotFound(err) {
+				break
+			}
+
+			// If other error, fail the test
+			if err != nil {
+				return fmt.Errorf("unexpected error checking tax: %w", err)
+			}
+
+			// If this is the last retry and tax still exists, fail
+			if i == maxRetries-1 {
+				return fmt.Errorf("tax %s still exists after destroy (tried %d times)", countryCode, maxRetries)
+			}
+
+			// Wait before retrying (exponential backoff: 100ms, 200ms, 400ms, ...)
+			time.Sleep(time.Duration(100*(1<<uint(i))) * time.Millisecond)
 		}
-
-		// If other error, fail the test
-		if err != nil {
-			return fmt.Errorf("unexpected error checking tax: %w", err)
-		}
-
-		// If no error, tax still exists
-		return fmt.Errorf("tax %s still exists after destroy", countryCode)
 	}
 
 	return nil

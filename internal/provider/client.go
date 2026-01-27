@@ -636,9 +636,21 @@ func (c *EmporixClient) CreateTax(ctx context.Context, taxCreate *TaxCreate) (*T
 		return nil, fmt.Errorf("error decoding tax create response: %w", err)
 	}
 
-	// POST response doesn't include full data, fetch complete state via GET
-	tflog.Debug(ctx, "Tax created, fetching complete state via GET")
-	return c.GetTax(ctx, createResp.LocationCode)
+	// Construct the response from request data to avoid pod-level cache inconsistency
+	// The Tax service has 1-minute pod-level caching, so a GET after POST might hit
+	// a different pod and return stale data
+	tflog.Debug(ctx, "Tax created, constructing state from request data")
+
+	tax := &Tax{
+		LocationCode: createResp.LocationCode,
+		Location:     taxCreate.Location,
+		TaxClasses:   taxCreate.TaxClasses,
+		Metadata: &Metadata{
+			Version: 1, // First version after creation
+		},
+	}
+
+	return tax, nil
 }
 
 // GetTax retrieves a tax configuration by location code (country code)
@@ -709,10 +721,27 @@ func (c *EmporixClient) UpdateTax(ctx context.Context, locationCode string, upda
 		return nil, err
 	}
 
-	// PUT returns 204 No Content, so fetch current state via GET
-	tflog.Debug(ctx, "Update succeeded, fetching current state via GET")
+	// Construct the response from request data to avoid pod-level cache inconsistency
+	// The Tax service has 1-minute pod-level caching, so a GET after PUT might hit
+	// a different pod and return stale data
+	tflog.Debug(ctx, "Update succeeded, constructing state from request data")
 
-	return c.GetTax(ctx, locationCode)
+	// Calculate new version (increments after successful update)
+	newVersion := 1
+	if updateData.Metadata != nil && updateData.Metadata.Version > 0 {
+		newVersion = updateData.Metadata.Version + 1
+	}
+
+	updatedTax := &Tax{
+		LocationCode: locationCode,
+		Location:     updateData.Location,
+		TaxClasses:   updateData.TaxClasses,
+		Metadata: &Metadata{
+			Version: newVersion,
+		},
+	}
+
+	return updatedTax, nil
 }
 
 // DeleteTax deletes a tax configuration by location code
