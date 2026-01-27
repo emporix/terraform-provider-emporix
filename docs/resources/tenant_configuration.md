@@ -16,20 +16,20 @@ Manages tenant configurations in Emporix. Tenant configurations store key-value 
 ### String Value
 
 ```terraform
-resource "emporix_tenant_configuration" "project_country" {
-  key   = "project_country"
-  value = jsonencode("US")
+resource "emporix_tenant_configuration" "project_string_example" {
+  key   = "project_string_example"
+  value = jsonencode("example")
 }
 ```
 
 ### Object Value
 
 ```terraform
-resource "emporix_tenant_configuration" "tax_config" {
-  key = "taxConfiguration"
+resource "emporix_tenant_configuration" "object_config" {
+  key = "objectConfiguration"
   value = jsonencode({
-    taxClassOrder = ["FULL", "HALF", "ZERO"]
-    taxClasses = {
+    order = ["FULL", "HALF", "ZERO"]
+    classes = {
       FULL = 19
       HALF = 7
       ZERO = 0
@@ -41,18 +41,18 @@ resource "emporix_tenant_configuration" "tax_config" {
 ### Array Value
 
 ```terraform
-resource "emporix_tenant_configuration" "project_currencies" {
-  key = "project_currencies"
+resource "emporix_tenant_configuration" "project_array" {
+  key = "project_array"
   value = jsonencode([
     {
-      id       = "USD"
-      label    = "US Dollar"
+      id       = "elem1"
+      label    = "aaa"
       default  = true
       required = true
     },
     {
-      id       = "EUR"
-      label    = "Euro"
+      id       = "elem2"
+      label    = "bbb"
       default  = false
       required = false
     }
@@ -308,23 +308,11 @@ resource "emporix_tenant_configuration" "project_lang" {
 }
 ```
 
-**When to use double jsonencode():**
-- ✅ `project_lang` - Languages configuration (JSON string)
-- ✅ `project_curr` - Currencies configuration (JSON string)
-- ✅ Any configuration where the API expects a JSON string value
-
-**When to use single jsonencode():**
-- ✅ `project_country` - Simple string value
-- ✅ `taxConfiguration` - Direct object value
-- ✅ Most other configurations
-
 
 ## Common Configuration Keys
 
 ### Project Settings
-- `project_country` - Default country code
 - `project_lang` - Available languages configuration
-- `project_curr` - Available currencies configuration
 
 ### Storefront Settings
 - `storefront.host` - Storefront host domain
@@ -336,60 +324,6 @@ resource "emporix_tenant_configuration" "project_lang" {
 - `customer.changeemail.redirecturl` - URL for email change confirmation
 - `cust.notification.email.from` - From email address for notifications
 
-### Configuration Settings
-- `taxConfiguration` - Tax class configuration
-- `unitConf` - Unit conversion configuration
-- `packagingConf` - Packaging configuration
-
-## Working with Different Value Types
-
-### String Values
-```terraform
-resource "emporix_tenant_configuration" "simple_string" {
-  key   = "my_setting"
-  value = jsonencode("plain text value")
-}
-```
-
-### Numeric Values
-```terraform
-resource "emporix_tenant_configuration" "timeout" {
-  key   = "api_timeout_seconds"
-  value = jsonencode(30)
-}
-```
-
-### Boolean Values
-```terraform
-resource "emporix_tenant_configuration" "enabled" {
-  key   = "feature_enabled"
-  value = jsonencode(false)
-}
-```
-
-### Object Values
-```terraform
-resource "emporix_tenant_configuration" "settings" {
-  key = "app_settings"
-  value = jsonencode({
-    timeout    = 30
-    retries    = 3
-    debug_mode = false
-    endpoints = {
-      api = "https://api.example.com"
-      cdn = "https://cdn.example.com"
-    }
-  })
-}
-```
-
-### Array Values
-```terraform
-resource "emporix_tenant_configuration" "allowed_ips" {
-  key   = "firewall.whitelist"
-  value = jsonencode(["192.168.1.1", "192.168.1.2", "10.0.0.0/8"])
-}
-```
 
 ## Best Practices
 
@@ -482,41 +416,4 @@ output "country_config_value" {
 output "country_config_version" {
   value = emporix_tenant_configuration.country.version
 }
-```
-
-## Troubleshooting
-
-### Invalid JSON Error
-
-If you get "Invalid JSON" error, validate your JSON:
-
-```terraform
-# Wrong - missing quotes
-value = jsonencode(invalid)
-
-# Correct
-value = jsonencode("invalid")  # String
-# or
-value = jsonencode(var.invalid)  # Variable
-```
-
-### Version Conflict (409)
-
-If you get a 409 Conflict error, it means another process updated the configuration. Refresh your state:
-
-```bash
-terraform refresh
-terraform apply
-```
-
-### Configuration Not Found (404)
-
-If configuration doesn't exist during read/update, it may have been deleted outside Terraform:
-
-```bash
-# Remove from state
-terraform state rm emporix_tenant_configuration.my_config
-
-# Re-import if it exists
-terraform import emporix_tenant_configuration.my_config my_config_key
 ```
