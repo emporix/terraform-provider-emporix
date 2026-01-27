@@ -125,3 +125,39 @@ type TenantConfigurationUpdate struct {
 	Version int         `json:"version,omitempty"`
 	Secured bool        `json:"secured,omitempty"`
 }
+
+// Tax represents a tax configuration in Emporix
+type Tax struct {
+	LocationCode string       `json:"locationCode"`
+	Location     *TaxLocation `json:"location"`
+	TaxClasses   []TaxClass   `json:"taxClasses"`
+	Metadata     *Metadata    `json:"metadata,omitempty"`
+}
+
+// TaxLocation represents the location for a tax configuration
+type TaxLocation struct {
+	CountryCode string `json:"countryCode"`
+}
+
+// TaxClass represents a tax class within a tax configuration
+type TaxClass struct {
+	Code        string      `json:"code"`
+	Name        interface{} `json:"name"` // string or map[string]string
+	Rate        float64     `json:"rate"`
+	Description interface{} `json:"description,omitempty"` // string or map[string]string
+	Order       *int        `json:"order,omitempty"`
+	IsDefault   bool        `json:"isDefault,omitempty"`
+}
+
+// TaxCreate represents the creation payload for a tax configuration
+type TaxCreate struct {
+	Location   *TaxLocation `json:"location"`
+	TaxClasses []TaxClass   `json:"taxClasses"`
+}
+
+// TaxUpdate represents the update payload for a tax configuration
+type TaxUpdate struct {
+	Location   *TaxLocation `json:"location"`
+	TaxClasses []TaxClass   `json:"taxClasses"`
+	Metadata   *Metadata    `json:"metadata,omitempty"`
+}
