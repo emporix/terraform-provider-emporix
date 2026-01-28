@@ -266,6 +266,16 @@ func (r *DeliveryTimeResource) Create(ctx context.Context, req resource.CreateRe
 		"site_code": data.SiteCode.ValueString(),
 	})
 
+	// Validate zone_id requirement
+	if !data.IsForAllZones.ValueBool() && data.ZoneID.IsNull() {
+		resp.Diagnostics.AddError(
+			"Missing Required Attribute",
+			"zone_id is required when is_for_all_zones is false. "+
+				"Either provide a zone_id or set is_for_all_zones to true.",
+		)
+		return
+	}
+
 	// Build API request
 	deliveryTime := &DeliveryTime{
 		SiteCode:         data.SiteCode.ValueString(),
@@ -307,27 +317,37 @@ func (r *DeliveryTimeResource) Create(ctx context.Context, req resource.CreateRe
 				Capacity:       int(slotModel.Capacity.ValueInt64()),
 			}
 
-			// Parse delivery time range
-			var timeRangeModel TimeRangeModel
-			resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			slot.DeliveryTimeRange = &TimeRange{
-				TimeFrom: timeRangeModel.TimeFrom.ValueString(),
-				TimeTo:   timeRangeModel.TimeTo.ValueString(),
+			// Parse delivery time range (check for Unknown/Null)
+			if !slotModel.DeliveryTimeRange.IsNull() && !slotModel.DeliveryTimeRange.IsUnknown() {
+				var timeRangeModel TimeRangeModel
+				resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				// Check inner fields are not null
+				if !timeRangeModel.TimeFrom.IsNull() && !timeRangeModel.TimeTo.IsNull() {
+					slot.DeliveryTimeRange = &TimeRange{
+						TimeFrom: timeRangeModel.TimeFrom.ValueString(),
+						TimeTo:   timeRangeModel.TimeTo.ValueString(),
+					}
+				}
 			}
 
-			// Parse cut off time if provided
-			if !slotModel.CutOffTime.IsNull() {
+			// Parse cut off time if provided (check for Unknown/Null)
+			if !slotModel.CutOffTime.IsNull() && !slotModel.CutOffTime.IsUnknown() {
 				var cutOffTimeModel CutOffTimeModel
 				resp.Diagnostics.Append(slotModel.CutOffTime.As(ctx, &cutOffTimeModel, basetypes.ObjectAsOptions{})...)
 				if resp.Diagnostics.HasError() {
 					return
 				}
-				slot.CutOffTime = &CutOffTime{
-					Time:              cutOffTimeModel.Time.ValueString(),
-					DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
+
+				// Check Time field is not null
+				if !cutOffTimeModel.Time.IsNull() {
+					slot.CutOffTime = &CutOffTime{
+						Time:              cutOffTimeModel.Time.ValueString(),
+						DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
+					}
 				}
 			}
 
@@ -342,25 +362,18 @@ func (r *DeliveryTimeResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	// If create response is empty, read back to get the ID
-	if createdDeliveryTime == nil {
-		tflog.Debug(ctx, "Create response was empty, reading back to get ID")
-		// Try to get by name first to find the ID
-		actualDeliveryTime, err := r.client.GetDeliveryTime(ctx, data.Name.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read created delivery time, got error: %s", err))
-			return
-		}
-		createdDeliveryTime = actualDeliveryTime
+	// Ensure we got a valid response with ID
+	if createdDeliveryTime == nil || createdDeliveryTime.ID == "" {
+		resp.Diagnostics.AddError(
+			"API Error",
+			"API did not return an ID for the created delivery time. "+
+				"Cannot proceed without a unique identifier.",
+		)
+		return
 	}
 
 	// Store the generated ID
-	if createdDeliveryTime.ID != "" {
-		data.ID = types.StringValue(createdDeliveryTime.ID)
-	} else {
-		resp.Diagnostics.AddError("API Error", "API did not return an ID for the created delivery time")
-		return
-	}
+	data.ID = types.StringValue(createdDeliveryTime.ID)
 
 	// Read back using the ID to get actual state
 	tflog.Debug(ctx, "Reading back created delivery time using ID", map[string]interface{}{
@@ -428,6 +441,16 @@ func (r *DeliveryTimeResource) Update(ctx context.Context, req resource.UpdateRe
 		"name": data.Name.ValueString(),
 	})
 
+	// Validate zone_id requirement
+	if !data.IsForAllZones.ValueBool() && data.ZoneID.IsNull() {
+		resp.Diagnostics.AddError(
+			"Missing Required Attribute",
+			"zone_id is required when is_for_all_zones is false. "+
+				"Either provide a zone_id or set is_for_all_zones to true.",
+		)
+		return
+	}
+
 	// Build API request (same as Create)
 	deliveryTime := &DeliveryTime{
 		SiteCode:         data.SiteCode.ValueString(),
@@ -467,25 +490,37 @@ func (r *DeliveryTimeResource) Update(ctx context.Context, req resource.UpdateRe
 				Capacity:       int(slotModel.Capacity.ValueInt64()),
 			}
 
-			var timeRangeModel TimeRangeModel
-			resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			slot.DeliveryTimeRange = &TimeRange{
-				TimeFrom: timeRangeModel.TimeFrom.ValueString(),
-				TimeTo:   timeRangeModel.TimeTo.ValueString(),
+			// Parse delivery time range (check for Unknown/Null)
+			if !slotModel.DeliveryTimeRange.IsNull() && !slotModel.DeliveryTimeRange.IsUnknown() {
+				var timeRangeModel TimeRangeModel
+				resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+
+				// Check inner fields are not null
+				if !timeRangeModel.TimeFrom.IsNull() && !timeRangeModel.TimeTo.IsNull() {
+					slot.DeliveryTimeRange = &TimeRange{
+						TimeFrom: timeRangeModel.TimeFrom.ValueString(),
+						TimeTo:   timeRangeModel.TimeTo.ValueString(),
+					}
+				}
 			}
 
-			if !slotModel.CutOffTime.IsNull() {
+			// Parse cut off time if provided (check for Unknown/Null)
+			if !slotModel.CutOffTime.IsNull() && !slotModel.CutOffTime.IsUnknown() {
 				var cutOffTimeModel CutOffTimeModel
 				resp.Diagnostics.Append(slotModel.CutOffTime.As(ctx, &cutOffTimeModel, basetypes.ObjectAsOptions{})...)
 				if resp.Diagnostics.HasError() {
 					return
 				}
-				slot.CutOffTime = &CutOffTime{
-					Time:              cutOffTimeModel.Time.ValueString(),
-					DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
+
+				// Check Time field is not null
+				if !cutOffTimeModel.Time.IsNull() {
+					slot.CutOffTime = &CutOffTime{
+						Time:              cutOffTimeModel.Time.ValueString(),
+						DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
+					}
 				}
 			}
 
@@ -646,7 +681,8 @@ func (r *DeliveryTimeResource) syncModelFromAPI(ctx context.Context, model *Deli
 		diags.Append(d...)
 		model.Slots = slotsList
 	} else {
-		model.Slots = types.ListNull(types.ObjectType{
+		// Use empty list instead of null for consistency
+		emptySlotsList, d := types.ListValueFrom(ctx, types.ObjectType{
 			AttrTypes: map[string]attr.Type{
 				"shipping_method": types.StringType,
 				"capacity":        types.Int64Type,
@@ -663,6 +699,8 @@ func (r *DeliveryTimeResource) syncModelFromAPI(ctx context.Context, model *Deli
 					},
 				},
 			},
-		})
+		}, []DeliveryTimeSlotModel{})
+		diags.Append(d...)
+		model.Slots = emptySlotsList
 	}
 }
