@@ -317,24 +317,43 @@ func (r *DeliveryTimeResource) Create(ctx context.Context, req resource.CreateRe
 				Capacity:       int(slotModel.Capacity.ValueInt64()),
 			}
 
-			// Parse delivery time range (check for Unknown/Null)
-			if !slotModel.DeliveryTimeRange.IsNull() && !slotModel.DeliveryTimeRange.IsUnknown() {
-				var timeRangeModel TimeRangeModel
-				resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-
-				// Check inner fields are not null
-				if !timeRangeModel.TimeFrom.IsNull() && !timeRangeModel.TimeTo.IsNull() {
-					slot.DeliveryTimeRange = &TimeRange{
-						TimeFrom: timeRangeModel.TimeFrom.ValueString(),
-						TimeTo:   timeRangeModel.TimeTo.ValueString(),
-					}
-				}
+			// Parse delivery time range (REQUIRED field - must not be null/unknown)
+			if slotModel.DeliveryTimeRange.IsNull() || slotModel.DeliveryTimeRange.IsUnknown() {
+				resp.Diagnostics.AddError(
+					"Missing Required Field",
+					"delivery_time_range is required for each slot",
+				)
+				return
 			}
 
-			// Parse cut off time if provided (check for Unknown/Null)
+			var timeRangeModel TimeRangeModel
+			resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			// Validate time_from and time_to are not null
+			if timeRangeModel.TimeFrom.IsNull() || timeRangeModel.TimeFrom.IsUnknown() {
+				resp.Diagnostics.AddError(
+					"Missing Required Field",
+					"time_from is required in delivery_time_range",
+				)
+				return
+			}
+			if timeRangeModel.TimeTo.IsNull() || timeRangeModel.TimeTo.IsUnknown() {
+				resp.Diagnostics.AddError(
+					"Missing Required Field",
+					"time_to is required in delivery_time_range",
+				)
+				return
+			}
+
+			slot.DeliveryTimeRange = &TimeRange{
+				TimeFrom: timeRangeModel.TimeFrom.ValueString(),
+				TimeTo:   timeRangeModel.TimeTo.ValueString(),
+			}
+
+			// Parse cut off time if provided (optional, but all fields required when present)
 			if !slotModel.CutOffTime.IsNull() && !slotModel.CutOffTime.IsUnknown() {
 				var cutOffTimeModel CutOffTimeModel
 				resp.Diagnostics.Append(slotModel.CutOffTime.As(ctx, &cutOffTimeModel, basetypes.ObjectAsOptions{})...)
@@ -342,12 +361,25 @@ func (r *DeliveryTimeResource) Create(ctx context.Context, req resource.CreateRe
 					return
 				}
 
-				// Check Time field is not null
-				if !cutOffTimeModel.Time.IsNull() {
-					slot.CutOffTime = &CutOffTime{
-						Time:              cutOffTimeModel.Time.ValueString(),
-						DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
-					}
+				// When cut_off_time is provided, both fields are required
+				if cutOffTimeModel.Time.IsNull() || cutOffTimeModel.Time.IsUnknown() {
+					resp.Diagnostics.AddError(
+						"Missing Required Field",
+						"time is required in cut_off_time when cut_off_time is provided",
+					)
+					return
+				}
+				if cutOffTimeModel.DeliveryCycleName.IsNull() || cutOffTimeModel.DeliveryCycleName.IsUnknown() {
+					resp.Diagnostics.AddError(
+						"Missing Required Field",
+						"delivery_cycle_name is required in cut_off_time when cut_off_time is provided",
+					)
+					return
+				}
+
+				slot.CutOffTime = &CutOffTime{
+					Time:              cutOffTimeModel.Time.ValueString(),
+					DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
 				}
 			}
 
@@ -490,24 +522,43 @@ func (r *DeliveryTimeResource) Update(ctx context.Context, req resource.UpdateRe
 				Capacity:       int(slotModel.Capacity.ValueInt64()),
 			}
 
-			// Parse delivery time range (check for Unknown/Null)
-			if !slotModel.DeliveryTimeRange.IsNull() && !slotModel.DeliveryTimeRange.IsUnknown() {
-				var timeRangeModel TimeRangeModel
-				resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-
-				// Check inner fields are not null
-				if !timeRangeModel.TimeFrom.IsNull() && !timeRangeModel.TimeTo.IsNull() {
-					slot.DeliveryTimeRange = &TimeRange{
-						TimeFrom: timeRangeModel.TimeFrom.ValueString(),
-						TimeTo:   timeRangeModel.TimeTo.ValueString(),
-					}
-				}
+			// Parse delivery time range (REQUIRED field - must not be null/unknown)
+			if slotModel.DeliveryTimeRange.IsNull() || slotModel.DeliveryTimeRange.IsUnknown() {
+				resp.Diagnostics.AddError(
+					"Missing Required Field",
+					"delivery_time_range is required for each slot",
+				)
+				return
 			}
 
-			// Parse cut off time if provided (check for Unknown/Null)
+			var timeRangeModel TimeRangeModel
+			resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+
+			// Validate time_from and time_to are not null
+			if timeRangeModel.TimeFrom.IsNull() || timeRangeModel.TimeFrom.IsUnknown() {
+				resp.Diagnostics.AddError(
+					"Missing Required Field",
+					"time_from is required in delivery_time_range",
+				)
+				return
+			}
+			if timeRangeModel.TimeTo.IsNull() || timeRangeModel.TimeTo.IsUnknown() {
+				resp.Diagnostics.AddError(
+					"Missing Required Field",
+					"time_to is required in delivery_time_range",
+				)
+				return
+			}
+
+			slot.DeliveryTimeRange = &TimeRange{
+				TimeFrom: timeRangeModel.TimeFrom.ValueString(),
+				TimeTo:   timeRangeModel.TimeTo.ValueString(),
+			}
+
+			// Parse cut off time if provided (optional, but all fields required when present)
 			if !slotModel.CutOffTime.IsNull() && !slotModel.CutOffTime.IsUnknown() {
 				var cutOffTimeModel CutOffTimeModel
 				resp.Diagnostics.Append(slotModel.CutOffTime.As(ctx, &cutOffTimeModel, basetypes.ObjectAsOptions{})...)
@@ -515,12 +566,25 @@ func (r *DeliveryTimeResource) Update(ctx context.Context, req resource.UpdateRe
 					return
 				}
 
-				// Check Time field is not null
-				if !cutOffTimeModel.Time.IsNull() {
-					slot.CutOffTime = &CutOffTime{
-						Time:              cutOffTimeModel.Time.ValueString(),
-						DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
-					}
+				// When cut_off_time is provided, both fields are required
+				if cutOffTimeModel.Time.IsNull() || cutOffTimeModel.Time.IsUnknown() {
+					resp.Diagnostics.AddError(
+						"Missing Required Field",
+						"time is required in cut_off_time when cut_off_time is provided",
+					)
+					return
+				}
+				if cutOffTimeModel.DeliveryCycleName.IsNull() || cutOffTimeModel.DeliveryCycleName.IsUnknown() {
+					resp.Diagnostics.AddError(
+						"Missing Required Field",
+						"delivery_cycle_name is required in cut_off_time when cut_off_time is provided",
+					)
+					return
+				}
+
+				slot.CutOffTime = &CutOffTime{
+					Time:              cutOffTimeModel.Time.ValueString(),
+					DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
 				}
 			}
 
@@ -636,6 +700,12 @@ func (r *DeliveryTimeResource) syncModelFromAPI(ctx context.Context, model *Deli
 				}, timeRangeModel)
 				diags.Append(d...)
 				slotModel.DeliveryTimeRange = timeRangeObj
+			} else {
+				// If API returns nil, set to ObjectNull (though this shouldn't happen for required field)
+				slotModel.DeliveryTimeRange = types.ObjectNull(map[string]attr.Type{
+					"time_from": types.StringType,
+					"time_to":   types.StringType,
+				})
 			}
 
 			// Cut off time

@@ -351,28 +351,40 @@ func mapTaxToModel(ctx context.Context, tax *Tax, data *TaxResourceModel, diags 
 			IsDefault: types.BoolValue(tc.IsDefault),
 		}
 
-		// Convert name (always map from API)
-		if nameMap, ok := tc.Name.(map[string]interface{}); ok {
-			nameStrMap := make(map[string]string)
-			for k, v := range nameMap {
-				if strVal, ok := v.(string); ok {
+		// Convert name (can be map[string]interface{} from JSON unmarshal or map[string]string from struct construction)
+		var nameStrMap map[string]string
+		switch v := tc.Name.(type) {
+		case map[string]interface{}:
+			nameStrMap = make(map[string]string)
+			for k, val := range v {
+				if strVal, ok := val.(string); ok {
 					nameStrMap[k] = strVal
 				}
 			}
+		case map[string]string:
+			nameStrMap = v
+		}
+		if nameStrMap != nil {
 			nameMapValue, d := types.MapValueFrom(ctx, types.StringType, nameStrMap)
 			diags.Append(d...)
 			model.Name = nameMapValue
 		}
 
-		// Convert description if present
+		// Convert description if present (can be map[string]interface{} from JSON or map[string]string from struct)
 		if tc.Description != nil {
-			if descMap, ok := tc.Description.(map[string]interface{}); ok {
-				descStrMap := make(map[string]string)
-				for k, v := range descMap {
-					if strVal, ok := v.(string); ok {
+			var descStrMap map[string]string
+			switch v := tc.Description.(type) {
+			case map[string]interface{}:
+				descStrMap = make(map[string]string)
+				for k, val := range v {
+					if strVal, ok := val.(string); ok {
 						descStrMap[k] = strVal
 					}
 				}
+			case map[string]string:
+				descStrMap = v
+			}
+			if descStrMap != nil {
 				descMapValue, d := types.MapValueFrom(ctx, types.StringType, descStrMap)
 				diags.Append(d...)
 				model.Description = descMapValue

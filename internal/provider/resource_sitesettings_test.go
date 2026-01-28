@@ -356,7 +356,7 @@ func testAccCheckSiteSettingsDestroy(s *terraform.State) error {
 		// Try to get the site
 		_, err := client.GetSite(ctx, code)
 
-		// If NotFoundError, resource was successfully destroyed
+		// If not found, resource was successfully destroyed
 		if IsNotFound(err) {
 			continue
 		}
