@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-01-29
+
+### Added
+
+- **New Resource: emporix_shipping_method** - Manage shipping methods in Emporix
+  - Full CRUD operations
+- **New Resource: emporix_delivery_time** - Manage delivery times in Emporix
+  - Full CRUD operations
+
+[0.5.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.5.0
+
 ## [0.4.1] - 2026-01-27
 
 ### Improvements
