@@ -1,6 +1,6 @@
 ---
 page_title: "emporix_delivery_time Resource - terraform-provider-emporix"
-subcategory: "Delivery & Shipping"
+subcategory: ""
 description: |-
   Manages delivery time configurations for shipping zones.
 ---

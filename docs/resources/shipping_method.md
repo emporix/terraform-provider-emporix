@@ -1,6 +1,6 @@
 ---
 page_title: "emporix_shipping_method Resource - terraform-provider-emporix"
-subcategory: "Delivery & Shipping"
+subcategory: ""
 description: |-
   Manages shipping methods for a shipping zone.
 ---
