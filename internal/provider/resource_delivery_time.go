@@ -49,7 +49,10 @@ type DeliveryTimeResourceModel struct {
 }
 
 type DeliveryDayModel struct {
-	Weekday types.String `tfsdk:"weekday"`
+	Weekday  types.String `tfsdk:"weekday"`
+	Date     types.String `tfsdk:"date"`
+	DateFrom types.String `tfsdk:"date_from"`
+	DateTo   types.String `tfsdk:"date_to"`
 }
 
 type DeliveryTimeSlotModel struct {
@@ -86,8 +89,17 @@ type DeliveryTime struct {
 }
 
 // DeliveryDay represents the day configuration
+// DatePeriod represents a date range for delivery times
+type DatePeriod struct {
+	DateFrom string `json:"dateFrom,omitempty"` // Start date
+	DateTo   string `json:"dateTo,omitempty"`   // End date
+}
+
+// DeliveryDay represents the day configuration for delivery times
 type DeliveryDay struct {
-	Weekday string `json:"weekday"` // MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
+	Weekday    string      `json:"weekday,omitempty"`    // MONDAY, TUESDAY, etc.
+	SingleDate string      `json:"singleDate,omitempty"` // Specific date in ISO 8601 with time
+	DatePeriod *DatePeriod `json:"datePeriod,omitempty"` // Date range object
 }
 
 // DeliveryTimeSlot represents a delivery time slot
@@ -164,14 +176,44 @@ func (r *DeliveryTimeResource) Schema(ctx context.Context, req resource.SchemaRe
 				Default:             int64default.StaticInt64(0),
 			},
 			"day": schema.SingleNestedAttribute{
-				MarkdownDescription: "Day configuration for this delivery time.",
+				MarkdownDescription: "Day configuration for this delivery time. Supports weekday (recurring), specific date, or date range.",
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"weekday": schema.StringAttribute{
-						MarkdownDescription: "Day of the week (MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY).",
-						Required:            true,
+						MarkdownDescription: "Day of the week for recurring delivery (MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY). Use for weekly recurring deliveries.",
+						Optional:            true,
 						Validators: []validator.String{
 							stringvalidator.OneOf("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"),
+						},
+					},
+					"date": schema.StringAttribute{
+						MarkdownDescription: "Specific date for one-time delivery in ISO 8601 format. Example: '2024-12-25T10:00:00.000Z'.",
+						Optional:            true,
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`),
+								"must be in ISO 8601 format (YYYY-MM-DDTHH:MM:SS.sssZ)",
+							),
+						},
+					},
+					"date_from": schema.StringAttribute{
+						MarkdownDescription: "Start date for delivery date range in ISO 8601 format. Example: '2024-06-01T10:00:00.000Z'.",
+						Optional:            true,
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`),
+								"must be in ISO 8601 format (YYYY-MM-DDTHH:MM:SS.sssZ)",
+							),
+						},
+					},
+					"date_to": schema.StringAttribute{
+						MarkdownDescription: "End date for delivery date range in ISO 8601 format. Example: '2024-08-31T10:00:00.000Z'.",
+						Optional:            true,
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(
+								regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$`),
+								"must be in ISO 8601 format (YYYY-MM-DDTHH:MM:SS.sssZ)",
+							),
 						},
 					},
 				},
@@ -298,8 +340,30 @@ func (r *DeliveryTimeResource) Create(ctx context.Context, req resource.CreateRe
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		deliveryTime.Day = &DeliveryDay{
-			Weekday: dayModel.Weekday.ValueString(),
+
+		// API requires ONLY ONE of: singleDate, datePeriod, or weekday
+		// Priority: singleDate > datePeriod > weekday
+		if !dayModel.Date.IsNull() && !dayModel.Date.IsUnknown() {
+			// Specific date - use singleDate field
+			deliveryTime.Day = &DeliveryDay{
+				SingleDate: dayModel.Date.ValueString(),
+			}
+		} else if (!dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown()) || (!dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown()) {
+			// Date range - use datePeriod object
+			deliveryTime.Day = &DeliveryDay{
+				DatePeriod: &DatePeriod{},
+			}
+			if !dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown() {
+				deliveryTime.Day.DatePeriod.DateFrom = dayModel.DateFrom.ValueString()
+			}
+			if !dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown() {
+				deliveryTime.Day.DatePeriod.DateTo = dayModel.DateTo.ValueString()
+			}
+		} else if !dayModel.Weekday.IsNull() && !dayModel.Weekday.IsUnknown() {
+			// Weekday only
+			deliveryTime.Day = &DeliveryDay{
+				Weekday: dayModel.Weekday.ValueString(),
+			}
 		}
 	}
 
@@ -504,8 +568,30 @@ func (r *DeliveryTimeResource) Update(ctx context.Context, req resource.UpdateRe
 		if resp.Diagnostics.HasError() {
 			return
 		}
-		deliveryTime.Day = &DeliveryDay{
-			Weekday: dayModel.Weekday.ValueString(),
+
+		// API requires ONLY ONE of: singleDate, datePeriod, or weekday
+		// Priority: singleDate > datePeriod > weekday
+		if !dayModel.Date.IsNull() && !dayModel.Date.IsUnknown() {
+			// Specific date - use singleDate field
+			deliveryTime.Day = &DeliveryDay{
+				SingleDate: dayModel.Date.ValueString(),
+			}
+		} else if (!dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown()) || (!dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown()) {
+			// Date range - use datePeriod object
+			deliveryTime.Day = &DeliveryDay{
+				DatePeriod: &DatePeriod{},
+			}
+			if !dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown() {
+				deliveryTime.Day.DatePeriod.DateFrom = dayModel.DateFrom.ValueString()
+			}
+			if !dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown() {
+				deliveryTime.Day.DatePeriod.DateTo = dayModel.DateTo.ValueString()
+			}
+		} else if !dayModel.Weekday.IsNull() && !dayModel.Weekday.IsUnknown() {
+			// Weekday only
+			deliveryTime.Day = &DeliveryDay{
+				Weekday: dayModel.Weekday.ValueString(),
+			}
 		}
 	}
 
@@ -665,17 +751,54 @@ func (r *DeliveryTimeResource) syncModelFromAPI(ctx context.Context, model *Deli
 
 	// Sync day
 	if api.Day != nil {
-		dayModel := DeliveryDayModel{
-			Weekday: types.StringValue(api.Day.Weekday),
+		dayModel := DeliveryDayModel{}
+
+		// Set weekday if present
+		if api.Day.Weekday != "" {
+			dayModel.Weekday = types.StringValue(api.Day.Weekday)
+		} else {
+			dayModel.Weekday = types.StringNull()
 		}
+
+		// Set single date if present
+		if api.Day.SingleDate != "" {
+			dayModel.Date = types.StringValue(api.Day.SingleDate)
+		} else {
+			dayModel.Date = types.StringNull()
+		}
+
+		// Set date period if present
+		if api.Day.DatePeriod != nil {
+			if api.Day.DatePeriod.DateFrom != "" {
+				dayModel.DateFrom = types.StringValue(api.Day.DatePeriod.DateFrom)
+			} else {
+				dayModel.DateFrom = types.StringNull()
+			}
+
+			if api.Day.DatePeriod.DateTo != "" {
+				dayModel.DateTo = types.StringValue(api.Day.DatePeriod.DateTo)
+			} else {
+				dayModel.DateTo = types.StringNull()
+			}
+		} else {
+			dayModel.DateFrom = types.StringNull()
+			dayModel.DateTo = types.StringNull()
+		}
+
 		dayObj, d := types.ObjectValueFrom(ctx, map[string]attr.Type{
-			"weekday": types.StringType,
+			"weekday":   types.StringType,
+			"date":      types.StringType,
+			"date_from": types.StringType,
+			"date_to":   types.StringType,
 		}, dayModel)
 		diags.Append(d...)
 		model.Day = dayObj
 	} else {
 		model.Day = types.ObjectNull(map[string]attr.Type{
-			"weekday": types.StringType,
+			"weekday":   types.StringType,
+			"date":      types.StringType,
+			"date_from": types.StringType,
+			"date_to":   types.StringType,
 		})
 	}
 

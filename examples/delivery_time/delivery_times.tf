@@ -150,9 +150,9 @@ resource "emporix_shipping_method" "standard_metro" {
   depends_on = [emporix_shipping_zone.metro]
 }
 
-# Friday delivery with morning and afternoon slots
-resource "emporix_delivery_time" "friday_delivery" {
-  name               = "friday-delivery-slots"
+# Thursday delivery with morning and afternoon slots
+resource "emporix_delivery_time" "thursday_delivery" {
+  name               = "thursday-delivery-slots"
   site_code          = "main"
   is_delivery_day    = true
   zone_id            = emporix_shipping_zone.downtown.id
@@ -160,7 +160,7 @@ resource "emporix_delivery_time" "friday_delivery" {
   delivery_day_shift = 0
 
   day = {
-    weekday = "FRIDAY"
+    weekday = "THURSDAY"
   }
 
   slots = [
@@ -227,7 +227,7 @@ resource "emporix_delivery_time" "saturday_delivery" {
       }
 
       cut_off_time = {
-        time                = "2023-06-12T20:00:00.000Z"
+        time                = "2023-06-12T06:00:00.000Z"
         delivery_cycle_name = "saturday"
       }
     }
@@ -249,7 +249,7 @@ resource "emporix_delivery_time" "express_next_day" {
   delivery_day_shift = 1 # Next day delivery
 
   day = {
-    weekday = "MONDAY"
+    weekday = "WEDNESDAY"
   }
 
   slots = [
@@ -275,13 +275,91 @@ resource "emporix_delivery_time" "express_next_day" {
   ]
 }
 
+# Example 4: Specific Date Delivery (Holiday/Special Event)
+# One-time delivery on Christmas Day
+resource "emporix_delivery_time" "christmas_delivery" {
+  name               = "christmas-2024"
+  site_code          = "main"
+  is_delivery_day    = true
+  zone_id            = emporix_shipping_zone.downtown.id
+  time_zone_id       = "Europe/Warsaw"
+  delivery_day_shift = 0
+
+  day = {
+    date = "2024-12-25T11:00:00.000Z"  # Christmas Day - API requires literal 12:00 time
+  }
+
+  slots = [
+    {
+      shipping_method = emporix_shipping_method.express_downtown.id
+      capacity        = 20
+
+      delivery_time_range = {
+        time_from = "09:00:00"
+        time_to   = "12:00:00"
+      }
+
+      cut_off_time = {
+        time                = "2024-12-24T06:00:00.000Z"
+        delivery_cycle_name = "christmas"
+      }
+    }
+  ]
+
+  depends_on = [
+    emporix_shipping_zone.downtown,
+    emporix_shipping_method.express_downtown
+  ]
+}
+
+# Example 5: Date Range Delivery (Temporary Schedule)
+# Extended summer hours from June to August
+resource "emporix_delivery_time" "summer_extended" {
+  name               = "summer-extended-hours"
+  site_code          = "main"
+  is_delivery_day    = true
+  zone_id            = emporix_shipping_zone.downtown.id
+  time_zone_id       = "Europe/Warsaw"
+  delivery_day_shift = 0
+
+  day = {
+    date_from = "2024-06-01T10:00:00.000Z"  # Start of summer - API requires literal 12:00 time
+    date_to   = "2024-08-31T10:00:00.000Z"  # End of summer - API requires literal 12:00 time
+  }
+
+  slots = [
+    {
+      shipping_method = emporix_shipping_method.standard_downtown.id
+      capacity        = 100
+
+      delivery_time_range = {
+        time_from = "08:00:00"
+        time_to   = "20:00:00"  # Extended hours during summer
+      }
+
+      cut_off_time = {
+        time                = "2024-06-01T06:00:00.000Z"
+        delivery_cycle_name = "summer"
+      }
+    }
+  ]
+
+  depends_on = [
+    emporix_shipping_zone.downtown,
+    emporix_shipping_method.standard_downtown
+  ]
+}
+
+
 # Output delivery time names for reference
 output "delivery_time_names" {
   description = "Created delivery time configuration names"
   value = {
-    friday   = emporix_delivery_time.friday_delivery.name
-    saturday = emporix_delivery_time.saturday_delivery.name
-    express  = emporix_delivery_time.express_next_day.name
+    thursday       = emporix_delivery_time.thursday_delivery.name
+    saturday       = emporix_delivery_time.saturday_delivery.name
+    express        = emporix_delivery_time.express_next_day.name
+    christmas      = emporix_delivery_time.christmas_delivery.name
+    summer         = emporix_delivery_time.summer_extended.name
   }
 }
 
