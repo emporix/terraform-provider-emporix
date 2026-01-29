@@ -39,6 +39,22 @@ type ShippingDestinationModel struct {
 	PostalCode types.String `tfsdk:"postal_code"`
 }
 
+// API structs for ShippingZone
+
+// ShippingZone represents a shipping zone
+type ShippingZone struct {
+	ID      string                `json:"id"`
+	Name    interface{}           `json:"name"`
+	Default bool                  `json:"default,omitempty"`
+	ShipTo  []ShippingDestination `json:"shipTo"`
+}
+
+// ShippingDestination represents a shipping destination
+type ShippingDestination struct {
+	Country    string `json:"country"`
+	PostalCode string `json:"postalCode,omitempty"`
+}
+
 func NewShippingZoneResource() resource.Resource {
 	return &ShippingZoneResource{}
 }

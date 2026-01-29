@@ -45,6 +45,23 @@ func getShippingZoneMutex(tenant string) *sync.Mutex {
 	return shippingZoneMutexes[tenant]
 }
 
+// Global mutex map for per-tenant shipping method operations
+var (
+	shippingMethodMutexes     = make(map[string]*sync.Mutex)
+	shippingMethodMutexesLock sync.Mutex
+)
+
+// getShippingMethodMutex returns the mutex for a specific tenant's shipping method operations
+func getShippingMethodMutex(tenant string) *sync.Mutex {
+	shippingMethodMutexesLock.Lock()
+	defer shippingMethodMutexesLock.Unlock()
+
+	if _, exists := shippingMethodMutexes[tenant]; !exists {
+		shippingMethodMutexes[tenant] = &sync.Mutex{}
+	}
+	return shippingMethodMutexes[tenant]
+}
+
 type EmporixClient struct {
 	Tenant      string
 	AccessToken string
@@ -693,20 +710,6 @@ func (c *EmporixClient) DeleteTenantConfiguration(ctx context.Context, key strin
 	return nil
 }
 
-// ShippingZone represents a shipping zone
-type ShippingZone struct {
-	ID      string                `json:"id"`
-	Name    interface{}           `json:"name"`
-	Default bool                  `json:"default,omitempty"`
-	ShipTo  []ShippingDestination `json:"shipTo"`
-}
-
-// ShippingDestination represents a shipping destination
-type ShippingDestination struct {
-	Country    string `json:"country"`
-	PostalCode string `json:"postalCode,omitempty"`
-}
-
 // CreateShippingZone creates a new shipping zone
 func (c *EmporixClient) CreateShippingZone(ctx context.Context, site string, zone *ShippingZone) (*ShippingZone, error) {
 	// Lock for this tenant's shipping zone operations
@@ -871,6 +874,247 @@ func (c *EmporixClient) DeleteShippingZone(ctx context.Context, site, zoneID str
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// DeliveryTime represents a delivery time configuration
+// CreateDeliveryTime creates a new delivery time
+func (c *EmporixClient) CreateDeliveryTime(ctx context.Context, deliveryTime *DeliveryTime) (*DeliveryTime, error) {
+	path := fmt.Sprintf("/shipping/%s/delivery-times", strings.ToLower(c.Tenant))
+
+	resp, err := c.doRequest(ctx, "POST", path, deliveryTime, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	// Accept both 201 Created and 200 OK
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	// If response body is empty, return nil
+	if len(bodyBytes) == 0 {
+		return nil, nil
+	}
+
+	var createdDeliveryTime DeliveryTime
+	if err := json.Unmarshal(bodyBytes, &createdDeliveryTime); err != nil {
+		tflog.Debug(ctx, "Failed to unmarshal create response, will rely on read-after-write", map[string]interface{}{
+			"error": err.Error(),
+			"body":  string(bodyBytes),
+		})
+		return nil, nil
+	}
+
+	return &createdDeliveryTime, nil
+}
+
+// GetDeliveryTime retrieves a delivery time by ID
+func (c *EmporixClient) GetDeliveryTime(ctx context.Context, id string) (*DeliveryTime, error) {
+	path := fmt.Sprintf("/shipping/%s/delivery-times/%s", strings.ToLower(c.Tenant), id)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var deliveryTime DeliveryTime
+	if err := json.Unmarshal(bodyBytes, &deliveryTime); err != nil {
+		return nil, fmt.Errorf("error decoding delivery time: %w", err)
+	}
+
+	return &deliveryTime, nil
+}
+
+// UpdateDeliveryTime updates a delivery time
+func (c *EmporixClient) UpdateDeliveryTime(ctx context.Context, id string, deliveryTime *DeliveryTime) (*DeliveryTime, error) {
+	path := fmt.Sprintf("/shipping/%s/delivery-times/%s", strings.ToLower(c.Tenant), id)
+
+	resp, err := c.doRequest(ctx, "PUT", path, deliveryTime, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	// Accept both 200 OK and 204 No Content
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// If response is 204 No Content or empty body, return nil
+	if resp.StatusCode == http.StatusNoContent || len(bodyBytes) == 0 {
+		return nil, nil
+	}
+
+	var updatedDeliveryTime DeliveryTime
+	if err := json.Unmarshal(bodyBytes, &updatedDeliveryTime); err != nil {
+		tflog.Debug(ctx, "Failed to unmarshal update response, will rely on read-after-write", map[string]interface{}{
+			"error": err.Error(),
+			"body":  string(bodyBytes),
+		})
+		return nil, nil
+	}
+
+	return &updatedDeliveryTime, nil
+}
+
+// DeleteDeliveryTime deletes a delivery time
+func (c *EmporixClient) DeleteDeliveryTime(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/shipping/%s/delivery-times/%s", strings.ToLower(c.Tenant), id)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ShippingMethod represents a shipping method
+// CreateShippingMethod creates a new shipping method
+func (c *EmporixClient) CreateShippingMethod(ctx context.Context, site, zoneID string, shippingMethod *ShippingMethod) (*ShippingMethod, error) {
+	// Lock for this tenant's shipping method operations
+	mu := getShippingMethodMutex(c.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := fmt.Sprintf("/shipping/%s/%s/zones/%s/methods", strings.ToLower(c.Tenant), site, zoneID)
+
+	resp, err := c.doRequest(ctx, "POST", path, shippingMethod, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var created ShippingMethod
+	if err := json.Unmarshal(bodyBytes, &created); err != nil {
+		return nil, fmt.Errorf("error decoding shipping method: %w", err)
+	}
+
+	return &created, nil
+}
+
+// GetShippingMethod retrieves a shipping method by ID
+func (c *EmporixClient) GetShippingMethod(ctx context.Context, site, zoneID, id string) (*ShippingMethod, error) {
+	// Lock for this tenant's shipping method operations
+	mu := getShippingMethodMutex(c.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := fmt.Sprintf("/shipping/%s/%s/zones/%s/methods/%s", strings.ToLower(c.Tenant), site, zoneID, id)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var shippingMethod ShippingMethod
+	if err := json.Unmarshal(bodyBytes, &shippingMethod); err != nil {
+		return nil, fmt.Errorf("error decoding shipping method: %w", err)
+	}
+
+	return &shippingMethod, nil
+}
+
+// UpdateShippingMethod updates a shipping method
+func (c *EmporixClient) UpdateShippingMethod(ctx context.Context, site, zoneID, id string, shippingMethod *ShippingMethod) (*ShippingMethod, error) {
+	// Lock for this tenant's shipping method operations
+	mu := getShippingMethodMutex(c.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := fmt.Sprintf("/shipping/%s/%s/zones/%s/methods/%s", strings.ToLower(c.Tenant), site, zoneID, id)
+
+	resp, err := c.doRequest(ctx, "PUT", path, shippingMethod, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// If response is 204 No Content or empty body, return nil
+	if resp.StatusCode == http.StatusNoContent || len(bodyBytes) == 0 {
+		return nil, nil
+	}
+
+	var updated ShippingMethod
+	if err := json.Unmarshal(bodyBytes, &updated); err != nil {
+		tflog.Debug(ctx, "Failed to unmarshal update response, will rely on read-after-write", map[string]interface{}{
+			"error": err.Error(),
+			"body":  string(bodyBytes),
+		})
+		return nil, nil
+	}
+
+	return &updated, nil
+}
+
+// DeleteShippingMethod deletes a shipping method
+func (c *EmporixClient) DeleteShippingMethod(ctx context.Context, site, zoneID, id string) error {
+	// Lock for this tenant's shipping method operations
+	mu := getShippingMethodMutex(c.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	path := fmt.Sprintf("/shipping/%s/%s/zones/%s/methods/%s", strings.ToLower(c.Tenant), site, zoneID, id)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK); err != nil {
 		return err
 	}
 
