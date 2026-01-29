@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -59,13 +60,48 @@ type ShippingFeeModel struct {
 
 // ShippingMethod represents a shipping method
 type ShippingMethod struct {
-	ID              string          `json:"id"`
-	Name            interface{}     `json:"name"` // string or map[string]string
-	Active          bool            `json:"active"`
-	MaxOrderValue   *MonetaryAmount `json:"maxOrderValue,omitempty"`
-	Fees            []ShippingFee   `json:"fees"`
-	ShippingTaxCode string          `json:"shippingTaxCode,omitempty"`
-	ShippingGroupID string          `json:"shippingGroupId,omitempty"`
+	ID              string            `json:"id"`
+	Name            map[string]string `json:"name"` // Localized name map
+	Active          bool              `json:"active"`
+	MaxOrderValue   *MonetaryAmount   `json:"maxOrderValue,omitempty"`
+	Fees            []ShippingFee     `json:"fees"`
+	ShippingTaxCode string            `json:"shippingTaxCode,omitempty"`
+	ShippingGroupID string            `json:"shippingGroupId,omitempty"`
+}
+
+// UnmarshalJSON handles the Name field which can be string or map[string]string from the API
+func (sm *ShippingMethod) UnmarshalJSON(data []byte) error {
+	// Use a temporary struct with Name as interface{}
+	type Alias ShippingMethod
+	aux := &struct {
+		Name interface{} `json:"name"`
+		*Alias
+	}{
+		Alias: (*Alias)(sm),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// Convert Name to map[string]string
+	switch nameVal := aux.Name.(type) {
+	case string:
+		sm.Name = map[string]string{"en": nameVal}
+	case map[string]interface{}:
+		sm.Name = make(map[string]string)
+		for k, v := range nameVal {
+			if str, ok := v.(string); ok {
+				sm.Name[k] = str
+			}
+		}
+	case map[string]string:
+		sm.Name = nameVal
+	default:
+		sm.Name = map[string]string{}
+	}
+
+	return nil
 }
 
 // ShippingFee represents a shipping fee configuration
@@ -233,8 +269,14 @@ func (r *ShippingMethodResource) Create(ctx context.Context, req resource.Create
 		"zone_id": data.ZoneID.ValueString(),
 	})
 
-	// Read back the created resource
-	actualMethod, err := r.client.GetShippingMethod(ctx, data.Site.ValueString(), data.ZoneID.ValueString(), data.ID.ValueString())
+	// Use the ID from the API response (may differ from requested ID)
+	createdID := data.ID.ValueString()
+	if createdMethod != nil && createdMethod.ID != "" {
+		createdID = createdMethod.ID
+	}
+
+	// Read back the created resource using the actual ID from API
+	actualMethod, err := r.client.GetShippingMethod(ctx, data.Site.ValueString(), data.ZoneID.ValueString(), createdID)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading created shipping method", err.Error())
 		return
@@ -244,6 +286,7 @@ func (r *ShippingMethodResource) Create(ctx context.Context, req resource.Create
 	var stateModel ShippingMethodResourceModel
 	stateModel.Site = data.Site
 	stateModel.ZoneID = data.ZoneID
+	stateModel.ID = types.StringValue(createdID) // Use the actual ID from API
 	r.syncModelFromAPI(ctx, &stateModel, actualMethod, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
@@ -372,10 +415,13 @@ func (r *ShippingMethodResource) toAPIModel(ctx context.Context, model *Shipping
 	apiMethod.Name = nameMap
 
 	// Convert max order value
-	if !model.MaxOrderValue.IsNull() {
+	if !model.MaxOrderValue.IsNull() && !model.MaxOrderValue.IsUnknown() {
 		var maxOrderValue MonetaryAmountModel
 		d := model.MaxOrderValue.As(ctx, &maxOrderValue, basetypes.ObjectAsOptions{})
 		diags.Append(d...)
+		if diags.HasError() {
+			return nil, diags
+		}
 		apiMethod.MaxOrderValue = &MonetaryAmount{
 			Amount:   maxOrderValue.Amount.ValueFloat64(),
 			Currency: maxOrderValue.Currency.ValueString(),
@@ -383,38 +429,49 @@ func (r *ShippingMethodResource) toAPIModel(ctx context.Context, model *Shipping
 	}
 
 	// Convert fees
-	var feeModels []ShippingFeeModel
-	d = model.Fees.ElementsAs(ctx, &feeModels, false)
-	diags.Append(d...)
-
-	apiFees := make([]ShippingFee, 0, len(feeModels))
-	for _, feeModel := range feeModels {
-		var minOrderValue MonetaryAmountModel
-		d = feeModel.MinOrderValue.As(ctx, &minOrderValue, basetypes.ObjectAsOptions{})
+	if !model.Fees.IsNull() && !model.Fees.IsUnknown() {
+		var feeModels []ShippingFeeModel
+		d = model.Fees.ElementsAs(ctx, &feeModels, false)
 		diags.Append(d...)
-
-		var cost MonetaryAmountModel
-		d = feeModel.Cost.As(ctx, &cost, basetypes.ObjectAsOptions{})
-		diags.Append(d...)
-
-		apiFee := ShippingFee{
-			MinOrderValue: &MonetaryAmount{
-				Amount:   minOrderValue.Amount.ValueFloat64(),
-				Currency: minOrderValue.Currency.ValueString(),
-			},
-			Cost: &MonetaryAmount{
-				Amount:   cost.Amount.ValueFloat64(),
-				Currency: cost.Currency.ValueString(),
-			},
+		if diags.HasError() {
+			return nil, diags
 		}
 
-		if !feeModel.ShippingGroupID.IsNull() {
-			apiFee.ShippingGroupID = feeModel.ShippingGroupID.ValueString()
-		}
+		apiFees := make([]ShippingFee, 0, len(feeModels))
+		for _, feeModel := range feeModels {
+			var minOrderValue MonetaryAmountModel
+			d = feeModel.MinOrderValue.As(ctx, &minOrderValue, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+			if diags.HasError() {
+				return nil, diags
+			}
 
-		apiFees = append(apiFees, apiFee)
+			var cost MonetaryAmountModel
+			d = feeModel.Cost.As(ctx, &cost, basetypes.ObjectAsOptions{})
+			diags.Append(d...)
+			if diags.HasError() {
+				return nil, diags
+			}
+
+			apiFee := ShippingFee{
+				MinOrderValue: &MonetaryAmount{
+					Amount:   minOrderValue.Amount.ValueFloat64(),
+					Currency: minOrderValue.Currency.ValueString(),
+				},
+				Cost: &MonetaryAmount{
+					Amount:   cost.Amount.ValueFloat64(),
+					Currency: cost.Currency.ValueString(),
+				},
+			}
+
+			if !feeModel.ShippingGroupID.IsNull() {
+				apiFee.ShippingGroupID = feeModel.ShippingGroupID.ValueString()
+			}
+
+			apiFees = append(apiFees, apiFee)
+		}
+		apiMethod.Fees = apiFees
 	}
-	apiMethod.Fees = apiFees
 
 	if !model.ShippingTaxCode.IsNull() {
 		apiMethod.ShippingTaxCode = model.ShippingTaxCode.ValueString()
@@ -431,23 +488,13 @@ func (r *ShippingMethodResource) syncModelFromAPI(ctx context.Context, model *Sh
 	model.ID = types.StringValue(api.ID)
 	model.Active = types.BoolValue(api.Active)
 
-	// Handle name (can be string or map)
-	switch nameVal := api.Name.(type) {
-	case string:
-		nameMap := map[string]string{"en": nameVal}
-		nameValue, d := types.MapValueFrom(ctx, types.StringType, nameMap)
+	// Handle name (always map[string]string after unmarshalling)
+	if api.Name != nil && len(api.Name) > 0 {
+		nameValue, d := types.MapValueFrom(ctx, types.StringType, api.Name)
 		diags.Append(d...)
 		model.Name = nameValue
-	case map[string]interface{}:
-		nameMap := make(map[string]string)
-		for k, v := range nameVal {
-			if str, ok := v.(string); ok {
-				nameMap[k] = str
-			}
-		}
-		nameValue, d := types.MapValueFrom(ctx, types.StringType, nameMap)
-		diags.Append(d...)
-		model.Name = nameValue
+	} else {
+		model.Name = types.MapNull(types.StringType)
 	}
 
 	// Max order value

@@ -295,6 +295,173 @@ func (r *DeliveryTimeResource) Configure(ctx context.Context, req resource.Confi
 	r.client = client
 }
 
+// buildDeliveryTimeFromModel builds a DeliveryTime API struct from the Terraform model
+func buildDeliveryTimeFromModel(ctx context.Context, data *DeliveryTimeResourceModel, diags *diag.Diagnostics) *DeliveryTime {
+	deliveryTime := &DeliveryTime{
+		SiteCode:         data.SiteCode.ValueString(),
+		Name:             data.Name.ValueString(),
+		IsDeliveryDay:    data.IsDeliveryDay.ValueBool(),
+		IsForAllZones:    data.IsForAllZones.ValueBool(),
+		TimeZoneID:       data.TimeZoneID.ValueString(),
+		DeliveryDayShift: int(data.DeliveryDayShift.ValueInt64()),
+	}
+
+	// Set zone_id if provided and not using is_for_all_zones
+	if !data.ZoneID.IsNull() && !data.IsForAllZones.ValueBool() {
+		deliveryTime.ZoneID = data.ZoneID.ValueString()
+	}
+
+	// Parse day if provided
+	if !data.Day.IsNull() {
+		var dayModel DeliveryDayModel
+		diags.Append(data.Day.As(ctx, &dayModel, basetypes.ObjectAsOptions{})...)
+		if diags.HasError() {
+			return nil
+		}
+
+		// API requires ONLY ONE of: singleDate, datePeriod, or weekday
+		// Priority: singleDate > datePeriod > weekday
+		if !dayModel.Date.IsNull() && !dayModel.Date.IsUnknown() {
+			// Specific date - use singleDate field
+			deliveryTime.Day = &DeliveryDay{
+				SingleDate: dayModel.Date.ValueString(),
+			}
+		} else if (!dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown()) || (!dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown()) {
+			// Date range - use datePeriod object
+			// Validate that both date_from and date_to are provided
+			hasDateFrom := !dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown()
+			hasDateTo := !dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown()
+
+			if hasDateFrom && !hasDateTo {
+				diags.AddError(
+					"Invalid Date Range",
+					"When using date_from, date_to must also be provided for a complete date range",
+				)
+				return nil
+			}
+			if !hasDateFrom && hasDateTo {
+				diags.AddError(
+					"Invalid Date Range",
+					"When using date_to, date_from must also be provided for a complete date range",
+				)
+				return nil
+			}
+
+			// Both are provided, validate date_from <= date_to
+			if hasDateFrom && hasDateTo {
+				dateFrom := dayModel.DateFrom.ValueString()
+				dateTo := dayModel.DateTo.ValueString()
+
+				if dateFrom > dateTo {
+					diags.AddError(
+						"Invalid Date Range",
+						fmt.Sprintf("date_from (%s) must be before or equal to date_to (%s)", dateFrom, dateTo),
+					)
+					return nil
+				}
+
+				deliveryTime.Day = &DeliveryDay{
+					DatePeriod: &DatePeriod{
+						DateFrom: dateFrom,
+						DateTo:   dateTo,
+					},
+				}
+			}
+		} else if !dayModel.Weekday.IsNull() && !dayModel.Weekday.IsUnknown() {
+			// Weekday only
+			deliveryTime.Day = &DeliveryDay{
+				Weekday: dayModel.Weekday.ValueString(),
+			}
+		}
+	}
+
+	// Parse slots if provided
+	if !data.Slots.IsNull() {
+		var slotsModels []DeliveryTimeSlotModel
+		diags.Append(data.Slots.ElementsAs(ctx, &slotsModels, false)...)
+		if diags.HasError() {
+			return nil
+		}
+
+		for _, slotModel := range slotsModels {
+			slot := DeliveryTimeSlot{
+				ShippingMethod: slotModel.ShippingMethod.ValueString(),
+				Capacity:       int(slotModel.Capacity.ValueInt64()),
+			}
+
+			// Parse delivery time range (REQUIRED field - must not be null/unknown)
+			if slotModel.DeliveryTimeRange.IsNull() || slotModel.DeliveryTimeRange.IsUnknown() {
+				diags.AddError(
+					"Missing Required Field",
+					"delivery_time_range is required for each slot",
+				)
+				return nil
+			}
+
+			var timeRangeModel TimeRangeModel
+			diags.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
+			if diags.HasError() {
+				return nil
+			}
+
+			// Validate time_from and time_to are not null
+			if timeRangeModel.TimeFrom.IsNull() || timeRangeModel.TimeFrom.IsUnknown() {
+				diags.AddError(
+					"Missing Required Field",
+					"time_from is required in delivery_time_range",
+				)
+				return nil
+			}
+			if timeRangeModel.TimeTo.IsNull() || timeRangeModel.TimeTo.IsUnknown() {
+				diags.AddError(
+					"Missing Required Field",
+					"time_to is required in delivery_time_range",
+				)
+				return nil
+			}
+
+			slot.DeliveryTimeRange = &TimeRange{
+				TimeFrom: timeRangeModel.TimeFrom.ValueString(),
+				TimeTo:   timeRangeModel.TimeTo.ValueString(),
+			}
+
+			// Parse cut off time if provided (optional, but all fields required when present)
+			if !slotModel.CutOffTime.IsNull() && !slotModel.CutOffTime.IsUnknown() {
+				var cutOffTimeModel CutOffTimeModel
+				diags.Append(slotModel.CutOffTime.As(ctx, &cutOffTimeModel, basetypes.ObjectAsOptions{})...)
+				if diags.HasError() {
+					return nil
+				}
+
+				// When cut_off_time is provided, both fields are required
+				if cutOffTimeModel.Time.IsNull() || cutOffTimeModel.Time.IsUnknown() {
+					diags.AddError(
+						"Missing Required Field",
+						"time is required in cut_off_time when cut_off_time is provided",
+					)
+					return nil
+				}
+				if cutOffTimeModel.DeliveryCycleName.IsNull() || cutOffTimeModel.DeliveryCycleName.IsUnknown() {
+					diags.AddError(
+						"Missing Required Field",
+						"delivery_cycle_name is required in cut_off_time when cut_off_time is provided",
+					)
+					return nil
+				}
+
+				slot.CutOffTime = &CutOffTime{
+					Time:              cutOffTimeModel.Time.ValueString(),
+					DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
+				}
+			}
+
+			deliveryTime.Slots = append(deliveryTime.Slots, slot)
+		}
+	}
+
+	return deliveryTime
+}
+
 func (r *DeliveryTimeResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data DeliveryTimeResourceModel
 
@@ -318,137 +485,10 @@ func (r *DeliveryTimeResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	// Build API request
-	deliveryTime := &DeliveryTime{
-		SiteCode:         data.SiteCode.ValueString(),
-		Name:             data.Name.ValueString(),
-		IsDeliveryDay:    data.IsDeliveryDay.ValueBool(),
-		IsForAllZones:    data.IsForAllZones.ValueBool(),
-		TimeZoneID:       data.TimeZoneID.ValueString(),
-		DeliveryDayShift: int(data.DeliveryDayShift.ValueInt64()),
-	}
-
-	// Set zone_id if provided and not using is_for_all_zones
-	if !data.ZoneID.IsNull() && !data.IsForAllZones.ValueBool() {
-		deliveryTime.ZoneID = data.ZoneID.ValueString()
-	}
-
-	// Parse day if provided
-	if !data.Day.IsNull() {
-		var dayModel DeliveryDayModel
-		resp.Diagnostics.Append(data.Day.As(ctx, &dayModel, basetypes.ObjectAsOptions{})...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		// API requires ONLY ONE of: singleDate, datePeriod, or weekday
-		// Priority: singleDate > datePeriod > weekday
-		if !dayModel.Date.IsNull() && !dayModel.Date.IsUnknown() {
-			// Specific date - use singleDate field
-			deliveryTime.Day = &DeliveryDay{
-				SingleDate: dayModel.Date.ValueString(),
-			}
-		} else if (!dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown()) || (!dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown()) {
-			// Date range - use datePeriod object
-			deliveryTime.Day = &DeliveryDay{
-				DatePeriod: &DatePeriod{},
-			}
-			if !dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown() {
-				deliveryTime.Day.DatePeriod.DateFrom = dayModel.DateFrom.ValueString()
-			}
-			if !dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown() {
-				deliveryTime.Day.DatePeriod.DateTo = dayModel.DateTo.ValueString()
-			}
-		} else if !dayModel.Weekday.IsNull() && !dayModel.Weekday.IsUnknown() {
-			// Weekday only
-			deliveryTime.Day = &DeliveryDay{
-				Weekday: dayModel.Weekday.ValueString(),
-			}
-		}
-	}
-
-	// Parse slots if provided
-	if !data.Slots.IsNull() {
-		var slotsModels []DeliveryTimeSlotModel
-		resp.Diagnostics.Append(data.Slots.ElementsAs(ctx, &slotsModels, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		for _, slotModel := range slotsModels {
-			slot := DeliveryTimeSlot{
-				ShippingMethod: slotModel.ShippingMethod.ValueString(),
-				Capacity:       int(slotModel.Capacity.ValueInt64()),
-			}
-
-			// Parse delivery time range (REQUIRED field - must not be null/unknown)
-			if slotModel.DeliveryTimeRange.IsNull() || slotModel.DeliveryTimeRange.IsUnknown() {
-				resp.Diagnostics.AddError(
-					"Missing Required Field",
-					"delivery_time_range is required for each slot",
-				)
-				return
-			}
-
-			var timeRangeModel TimeRangeModel
-			resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-
-			// Validate time_from and time_to are not null
-			if timeRangeModel.TimeFrom.IsNull() || timeRangeModel.TimeFrom.IsUnknown() {
-				resp.Diagnostics.AddError(
-					"Missing Required Field",
-					"time_from is required in delivery_time_range",
-				)
-				return
-			}
-			if timeRangeModel.TimeTo.IsNull() || timeRangeModel.TimeTo.IsUnknown() {
-				resp.Diagnostics.AddError(
-					"Missing Required Field",
-					"time_to is required in delivery_time_range",
-				)
-				return
-			}
-
-			slot.DeliveryTimeRange = &TimeRange{
-				TimeFrom: timeRangeModel.TimeFrom.ValueString(),
-				TimeTo:   timeRangeModel.TimeTo.ValueString(),
-			}
-
-			// Parse cut off time if provided (optional, but all fields required when present)
-			if !slotModel.CutOffTime.IsNull() && !slotModel.CutOffTime.IsUnknown() {
-				var cutOffTimeModel CutOffTimeModel
-				resp.Diagnostics.Append(slotModel.CutOffTime.As(ctx, &cutOffTimeModel, basetypes.ObjectAsOptions{})...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-
-				// When cut_off_time is provided, both fields are required
-				if cutOffTimeModel.Time.IsNull() || cutOffTimeModel.Time.IsUnknown() {
-					resp.Diagnostics.AddError(
-						"Missing Required Field",
-						"time is required in cut_off_time when cut_off_time is provided",
-					)
-					return
-				}
-				if cutOffTimeModel.DeliveryCycleName.IsNull() || cutOffTimeModel.DeliveryCycleName.IsUnknown() {
-					resp.Diagnostics.AddError(
-						"Missing Required Field",
-						"delivery_cycle_name is required in cut_off_time when cut_off_time is provided",
-					)
-					return
-				}
-
-				slot.CutOffTime = &CutOffTime{
-					Time:              cutOffTimeModel.Time.ValueString(),
-					DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
-				}
-			}
-
-			deliveryTime.Slots = append(deliveryTime.Slots, slot)
-		}
+	// Build API request from model
+	deliveryTime := buildDeliveryTimeFromModel(ctx, &data, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Create via API
@@ -547,135 +587,10 @@ func (r *DeliveryTimeResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	// Build API request (same as Create)
-	deliveryTime := &DeliveryTime{
-		SiteCode:         data.SiteCode.ValueString(),
-		Name:             data.Name.ValueString(),
-		IsDeliveryDay:    data.IsDeliveryDay.ValueBool(),
-		IsForAllZones:    data.IsForAllZones.ValueBool(),
-		TimeZoneID:       data.TimeZoneID.ValueString(),
-		DeliveryDayShift: int(data.DeliveryDayShift.ValueInt64()),
-	}
-
-	// Set zone_id if provided and not using is_for_all_zones
-	if !data.ZoneID.IsNull() && !data.IsForAllZones.ValueBool() {
-		deliveryTime.ZoneID = data.ZoneID.ValueString()
-	}
-
-	if !data.Day.IsNull() {
-		var dayModel DeliveryDayModel
-		resp.Diagnostics.Append(data.Day.As(ctx, &dayModel, basetypes.ObjectAsOptions{})...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		// API requires ONLY ONE of: singleDate, datePeriod, or weekday
-		// Priority: singleDate > datePeriod > weekday
-		if !dayModel.Date.IsNull() && !dayModel.Date.IsUnknown() {
-			// Specific date - use singleDate field
-			deliveryTime.Day = &DeliveryDay{
-				SingleDate: dayModel.Date.ValueString(),
-			}
-		} else if (!dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown()) || (!dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown()) {
-			// Date range - use datePeriod object
-			deliveryTime.Day = &DeliveryDay{
-				DatePeriod: &DatePeriod{},
-			}
-			if !dayModel.DateFrom.IsNull() && !dayModel.DateFrom.IsUnknown() {
-				deliveryTime.Day.DatePeriod.DateFrom = dayModel.DateFrom.ValueString()
-			}
-			if !dayModel.DateTo.IsNull() && !dayModel.DateTo.IsUnknown() {
-				deliveryTime.Day.DatePeriod.DateTo = dayModel.DateTo.ValueString()
-			}
-		} else if !dayModel.Weekday.IsNull() && !dayModel.Weekday.IsUnknown() {
-			// Weekday only
-			deliveryTime.Day = &DeliveryDay{
-				Weekday: dayModel.Weekday.ValueString(),
-			}
-		}
-	}
-
-	if !data.Slots.IsNull() {
-		var slotsModels []DeliveryTimeSlotModel
-		resp.Diagnostics.Append(data.Slots.ElementsAs(ctx, &slotsModels, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		for _, slotModel := range slotsModels {
-			slot := DeliveryTimeSlot{
-				ShippingMethod: slotModel.ShippingMethod.ValueString(),
-				Capacity:       int(slotModel.Capacity.ValueInt64()),
-			}
-
-			// Parse delivery time range (REQUIRED field - must not be null/unknown)
-			if slotModel.DeliveryTimeRange.IsNull() || slotModel.DeliveryTimeRange.IsUnknown() {
-				resp.Diagnostics.AddError(
-					"Missing Required Field",
-					"delivery_time_range is required for each slot",
-				)
-				return
-			}
-
-			var timeRangeModel TimeRangeModel
-			resp.Diagnostics.Append(slotModel.DeliveryTimeRange.As(ctx, &timeRangeModel, basetypes.ObjectAsOptions{})...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-
-			// Validate time_from and time_to are not null
-			if timeRangeModel.TimeFrom.IsNull() || timeRangeModel.TimeFrom.IsUnknown() {
-				resp.Diagnostics.AddError(
-					"Missing Required Field",
-					"time_from is required in delivery_time_range",
-				)
-				return
-			}
-			if timeRangeModel.TimeTo.IsNull() || timeRangeModel.TimeTo.IsUnknown() {
-				resp.Diagnostics.AddError(
-					"Missing Required Field",
-					"time_to is required in delivery_time_range",
-				)
-				return
-			}
-
-			slot.DeliveryTimeRange = &TimeRange{
-				TimeFrom: timeRangeModel.TimeFrom.ValueString(),
-				TimeTo:   timeRangeModel.TimeTo.ValueString(),
-			}
-
-			// Parse cut off time if provided (optional, but all fields required when present)
-			if !slotModel.CutOffTime.IsNull() && !slotModel.CutOffTime.IsUnknown() {
-				var cutOffTimeModel CutOffTimeModel
-				resp.Diagnostics.Append(slotModel.CutOffTime.As(ctx, &cutOffTimeModel, basetypes.ObjectAsOptions{})...)
-				if resp.Diagnostics.HasError() {
-					return
-				}
-
-				// When cut_off_time is provided, both fields are required
-				if cutOffTimeModel.Time.IsNull() || cutOffTimeModel.Time.IsUnknown() {
-					resp.Diagnostics.AddError(
-						"Missing Required Field",
-						"time is required in cut_off_time when cut_off_time is provided",
-					)
-					return
-				}
-				if cutOffTimeModel.DeliveryCycleName.IsNull() || cutOffTimeModel.DeliveryCycleName.IsUnknown() {
-					resp.Diagnostics.AddError(
-						"Missing Required Field",
-						"delivery_cycle_name is required in cut_off_time when cut_off_time is provided",
-					)
-					return
-				}
-
-				slot.CutOffTime = &CutOffTime{
-					Time:              cutOffTimeModel.Time.ValueString(),
-					DeliveryCycleName: cutOffTimeModel.DeliveryCycleName.ValueString(),
-				}
-			}
-
-			deliveryTime.Slots = append(deliveryTime.Slots, slot)
-		}
+	// Build update request from model
+	deliveryTime := buildDeliveryTimeFromModel(ctx, &data, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Update via API
