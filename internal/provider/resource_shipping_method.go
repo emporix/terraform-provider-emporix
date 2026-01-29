@@ -71,36 +71,47 @@ type ShippingMethod struct {
 
 // UnmarshalJSON handles the Name field which can be string or map[string]string from the API
 func (sm *ShippingMethod) UnmarshalJSON(data []byte) error {
-	// Use a temporary struct with Name as interface{}
-	type Alias ShippingMethod
-	aux := &struct {
-		Name interface{} `json:"name"`
-		*Alias
-	}{
-		Alias: (*Alias)(sm),
+	// Define a raw struct with Name as json.RawMessage
+	type shippingMethodRaw struct {
+		ID              string          `json:"id"`
+		Name            json.RawMessage `json:"name"`
+		Active          bool            `json:"active"`
+		MaxOrderValue   *MonetaryAmount `json:"maxOrderValue,omitempty"`
+		Fees            []ShippingFee   `json:"fees"`
+		ShippingTaxCode string          `json:"shippingTaxCode,omitempty"`
+		ShippingGroupID string          `json:"shippingGroupId,omitempty"`
 	}
 
-	if err := json.Unmarshal(data, &aux); err != nil {
+	var raw shippingMethodRaw
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
-	// Convert Name to map[string]string
-	switch nameVal := aux.Name.(type) {
-	case string:
-		sm.Name = map[string]string{"en": nameVal}
-	case map[string]interface{}:
-		sm.Name = make(map[string]string)
-		for k, v := range nameVal {
-			if str, ok := v.(string); ok {
-				sm.Name[k] = str
-			}
-		}
-	case map[string]string:
-		sm.Name = nameVal
-	default:
-		sm.Name = map[string]string{}
+	// Copy all fields except Name
+	sm.ID = raw.ID
+	sm.Active = raw.Active
+	sm.MaxOrderValue = raw.MaxOrderValue
+	sm.Fees = raw.Fees
+	sm.ShippingTaxCode = raw.ShippingTaxCode
+	sm.ShippingGroupID = raw.ShippingGroupID
+
+	// Handle Name field - try as string first, then as map
+	var nameStr string
+	if err := json.Unmarshal(raw.Name, &nameStr); err == nil {
+		// It's a string - convert to map
+		sm.Name = map[string]string{"en": nameStr}
+		return nil
 	}
 
+	// Try as map[string]string
+	var nameMap map[string]string
+	if err := json.Unmarshal(raw.Name, &nameMap); err == nil {
+		sm.Name = nameMap
+		return nil
+	}
+
+	// Fallback: empty map
+	sm.Name = map[string]string{}
 	return nil
 }
 
