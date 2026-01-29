@@ -876,3 +876,129 @@ func (c *EmporixClient) DeleteShippingZone(ctx context.Context, site, zoneID str
 
 	return nil
 }
+
+// CreateSchema creates a new schema
+func (c *EmporixClient) CreateSchema(ctx context.Context, schema *SchemaCreate) (*Schema, error) {
+	path := fmt.Sprintf("/schema/%s/schemas", strings.ToLower(c.Tenant))
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "POST", path, schema, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	// API returns IdResponse on creation
+	var idResp IdResponse
+	if err := json.Unmarshal(bodyBytes, &idResp); err != nil {
+		return nil, fmt.Errorf("error decoding schema creation response: %w", err)
+	}
+
+	tflog.Debug(ctx, "Schema created, fetching complete state via GET")
+
+	// Fetch complete schema data
+	return c.GetSchema(ctx, idResp.ID)
+}
+
+// GetSchema retrieves a schema by ID
+func (c *EmporixClient) GetSchema(ctx context.Context, id string) (*Schema, error) {
+	path := fmt.Sprintf("/schema/%s/schemas/%s", strings.ToLower(c.Tenant), id)
+
+	// Always use Accept-Language: * to retrieve all translations
+	headers := map[string]string{
+		"Accept-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var schema Schema
+	if err := json.Unmarshal(bodyBytes, &schema); err != nil {
+		return nil, fmt.Errorf("error decoding schema: %w", err)
+	}
+
+	return &schema, nil
+}
+
+// UpdateSchema updates a schema
+func (c *EmporixClient) UpdateSchema(ctx context.Context, id string, updateData *SchemaUpdate) (*Schema, error) {
+	// First, get current schema to retrieve metadata.version (required for PUT)
+	schema, err := c.GetSchema(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("error getting schema before update: %w", err)
+	}
+
+	// Add metadata.version to update data (required by API)
+	if schema.Metadata != nil && schema.Metadata.Version > 0 {
+		if updateData.Metadata == nil {
+			updateData.Metadata = &SchemaMetadataUpdate{}
+		}
+		updateData.Metadata.Version = schema.Metadata.Version
+	}
+
+	path := fmt.Sprintf("/schema/%s/schemas/%s", strings.ToLower(c.Tenant), id)
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// PUT returns 204 No Content, so fetch current state via GET
+	tflog.Debug(ctx, "Update succeeded, fetching current state via GET")
+
+	return c.GetSchema(ctx, id)
+}
+
+// DeleteSchema deletes a schema
+func (c *EmporixClient) DeleteSchema(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/schema/%s/schemas/%s", strings.ToLower(c.Tenant), id)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
