@@ -81,8 +81,8 @@ resource "emporix_delivery_time" "friday" {
       capacity        = 50
 
       delivery_time_range = {
-        time_from = "10:00:00"
-        time_to   = "14:00:00"
+        time_from = "10:00"
+        time_to   = "14:00"
       }
 
       cut_off_time = {
@@ -188,8 +188,8 @@ resource "emporix_delivery_time" "saturday" {
       capacity        = 50
 
       delivery_time_range = {
-        time_from = "09:00:00"
-        time_to   = "12:00:00"
+        time_from = "09:00"
+        time_to   = "12:00"
       }
 
       cut_off_time = {
@@ -203,8 +203,8 @@ resource "emporix_delivery_time" "saturday" {
       capacity        = 30
 
       delivery_time_range = {
-        time_from = "13:00:00"
-        time_to   = "17:00:00"
+        time_from = "13:00"
+        time_to   = "17:00"
       }
 
       cut_off_time = {
@@ -284,8 +284,8 @@ resource "emporix_delivery_time" "weekday_overnight" {
       capacity        = 100
 
       delivery_time_range = {
-        time_from = "08:00:00"
-        time_to   = "20:00:00"
+        time_from = "08:00"
+        time_to   = "20:00"
       }
 
       cut_off_time = {
@@ -325,8 +325,8 @@ resource "emporix_delivery_time" "christmas_delivery" {
       capacity        = 20
 
       delivery_time_range = {
-        time_from = "09:00:00"
-        time_to   = "12:00:00"
+        time_from = "09:00"
+        time_to   = "12:00"
       }
 
       cut_off_time = {
@@ -367,8 +367,8 @@ resource "emporix_delivery_time" "summer_extended" {
       capacity        = 100
 
       delivery_time_range = {
-        time_from = "08:00:00"
-        time_to   = "20:00:00"  # Extended hours during summer
+        time_from = "08:00"
+        time_to   = "20:00"  # Extended hours during summer
       }
 
       cut_off_time = {
@@ -449,8 +449,8 @@ Optional:
 
 Required:
 
-- `time_from` (String) Start time in HH:MM:SS format (e.g., "10:00:00")
-- `time_to` (String) End time in HH:MM:SS format (e.g., "14:00:00")
+- `time_from` (String) Start time in HH:MM format (e.g., "10:00")
+- `time_to` (String) End time in HH:MM format (e.g., "14:00")
 
 #### Nested Schema for `cut_off_time`
 

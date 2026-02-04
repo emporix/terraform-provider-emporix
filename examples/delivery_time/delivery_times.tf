@@ -170,8 +170,8 @@ resource "emporix_delivery_time" "thursday_delivery" {
       capacity        = 50
 
       delivery_time_range = {
-        time_from = "10:00:00"
-        time_to   = "12:00:00"
+        time_from = "10:00"
+        time_to   = "12:00"
       }
 
       cut_off_time = {
@@ -185,8 +185,8 @@ resource "emporix_delivery_time" "thursday_delivery" {
       capacity        = 30
 
       delivery_time_range = {
-        time_from = "14:00:00"
-        time_to   = "16:00:00"
+        time_from = "14:00"
+        time_to   = "16:00"
       }
 
       cut_off_time = {
@@ -222,8 +222,8 @@ resource "emporix_delivery_time" "saturday_delivery" {
       capacity        = 100
 
       delivery_time_range = {
-        time_from = "09:00:00"
-        time_to   = "17:00:00"
+        time_from = "09:00"
+        time_to   = "17:00"
       }
 
       cut_off_time = {
@@ -258,8 +258,8 @@ resource "emporix_delivery_time" "express_next_day" {
       capacity        = 30
 
       delivery_time_range = {
-        time_from = "08:00:00"
-        time_to   = "20:00:00"
+        time_from = "08:00"
+        time_to   = "20:00"
       }
 
       cut_off_time = {
@@ -295,8 +295,8 @@ resource "emporix_delivery_time" "christmas_delivery" {
       capacity        = 20
 
       delivery_time_range = {
-        time_from = "09:00:00"
-        time_to   = "12:00:00"
+        time_from = "09:00"
+        time_to   = "12:00"
       }
 
       cut_off_time = {
@@ -333,8 +333,8 @@ resource "emporix_delivery_time" "summer_extended" {
       capacity        = 100
 
       delivery_time_range = {
-        time_from = "08:00:00"
-        time_to   = "20:00:00"  # Extended hours during summer
+        time_from = "08:00"
+        time_to   = "20:00"  # Extended hours during summer
       }
 
       cut_off_time = {
