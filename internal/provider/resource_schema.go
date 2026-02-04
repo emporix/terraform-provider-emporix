@@ -35,6 +35,7 @@ type SchemaResourceModel struct {
 	Name       types.Map    `tfsdk:"name"`
 	Types      types.List   `tfsdk:"types"`
 	Attributes types.List   `tfsdk:"attributes"`
+	SchemaUrl  types.String `tfsdk:"schema_url"`
 }
 
 // SchemaAttributeModel describes the attribute data model
@@ -105,6 +106,10 @@ func (r *SchemaResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				MarkdownDescription: "List of schema types. Valid values: CART, CATEGORY, COMPANY, COUPON, CUSTOMER, CUSTOMER_ADDRESS, ORDER, PRODUCT, QUOTE, RETURN, PRICE_LIST, SITE, CUSTOM_ENTITY, VENDOR.",
 				ElementType:         types.StringType,
 				Required:            true,
+			},
+			"schema_url": schema.StringAttribute{
+				MarkdownDescription: "The URL of the schema, as returned by the API in the metadata.url field.",
+				Computed:            true,
 			},
 			"attributes": schema.ListNestedAttribute{
 				MarkdownDescription: "List of schema attributes defining the structure.",
@@ -457,6 +462,13 @@ func mapSchemaToModel(ctx context.Context, schema *Schema, data *SchemaResourceM
 	attrList, d := convertAttributesToModel(ctx, schema.Attributes)
 	diags.Append(d...)
 	data.Attributes = attrList
+
+	// Set schema_url from metadata.url
+	if schema.Metadata != nil && schema.Metadata.URL != "" {
+		data.SchemaUrl = types.StringValue(schema.Metadata.URL)
+	} else {
+		data.SchemaUrl = types.StringNull()
+	}
 }
 
 // convertAttributesToModel converts API SchemaAttributes to Terraform model

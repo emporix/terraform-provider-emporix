@@ -388,7 +388,7 @@ resource "emporix_schema" "entities" {
 
 # Outputs
 output "product_schemas" {
-  description = "Product schema IDs"
+  description = "Product schema IDs and URLs"
   value = {
     simple     = emporix_schema.product_simple.id
     rating     = emporix_schema.product_rating.id
@@ -397,18 +397,34 @@ output "product_schemas" {
   }
 }
 
+output "product_schema_urls" {
+  description = "Product schema URLs"
+  value = {
+    simple     = emporix_schema.product_simple.schema_url
+    rating     = emporix_schema.product_rating.schema_url
+    dimensions = emporix_schema.product_dimensions.schema_url
+    tags       = emporix_schema.product_tags.schema_url
+  }
+}
+
 output "customer_schema" {
   description = "Customer schema details"
   value = {
-    id    = emporix_schema.customer_extended.id
-    name  = lookup(emporix_schema.customer_extended.name, "en", "")
-    types = emporix_schema.customer_extended.types
+    id         = emporix_schema.customer_extended.id
+    name       = lookup(emporix_schema.customer_extended.name, "en", "")
+    types      = emporix_schema.customer_extended.types
+    schema_url = emporix_schema.customer_extended.schema_url
   }
 }
 
 output "entity_schemas" {
   description = "Entity schema IDs"
   value       = [for schema in emporix_schema.entities : schema.id]
+}
+
+output "entity_schema_urls" {
+  description = "Entity schema URLs"
+  value       = { for key, schema in emporix_schema.entities : key => schema.schema_url }
 }
 
 output "all_schema_ids" {
@@ -423,5 +439,20 @@ output "all_schema_ids" {
       emporix_schema.shared_metadata.id
     ],
     [for schema in emporix_schema.entities : schema.id]
+  )
+}
+
+output "all_schema_urls" {
+  description = "All schema URLs created"
+  value = concat(
+    [
+      emporix_schema.product_simple.schema_url,
+      emporix_schema.product_rating.schema_url,
+      emporix_schema.customer_extended.schema_url,
+      emporix_schema.product_dimensions.schema_url,
+      emporix_schema.product_tags.schema_url,
+      emporix_schema.shared_metadata.schema_url
+    ],
+    [for schema in emporix_schema.entities : schema.schema_url]
   )
 }

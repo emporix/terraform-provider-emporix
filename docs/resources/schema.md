@@ -353,6 +353,57 @@ resource "emporix_schema" "entities" {
     - `localized` (Boolean, Optional) Whether array elements are localized.
     - `values` (List of Object, Optional) List of allowed values for `ENUM` array elements (same structure as values above).
 
+## Outputs
+
+In addition to all input arguments, the following attributes are exported:
+
+- `schema_url` (String) The URL of the schema, as returned by the API in the `metadata.url` field. This can be used to reference the schema in other configurations or external systems.
+
+All input arguments (`id`, `name`, `types`, `attributes`) are also available as outputs and can be referenced from other resources or outputs.
+
+### Referencing Outputs
+
+```terraform
+resource "emporix_schema" "product_custom" {
+  id = "product-custom-fields"
+  name = {
+    en = "Product Custom Fields"
+  }
+  types = ["PRODUCT"]
+
+  attributes = [
+    {
+      key = "manufacturer"
+      name = {
+        en = "Manufacturer"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    }
+  ]
+}
+
+# Access the schema URL
+output "product_schema_url" {
+  value = emporix_schema.product_custom.schema_url
+}
+
+# Access other attributes
+output "product_schema_details" {
+  value = {
+    id         = emporix_schema.product_custom.id
+    name       = emporix_schema.product_custom.name
+    types      = emporix_schema.product_custom.types
+    schema_url = emporix_schema.product_custom.schema_url
+  }
+}
+```
+
 ## Import
 
 You can import existing schemas:
