@@ -91,7 +91,7 @@ func TestAccDeliveryTimeResource_update(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.#", "1"),
 					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.0.capacity", "150"),
-					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.0.delivery_time_range.time_from", "09:00:00"),
+					resource.TestCheckResourceAttr("emporix_delivery_time.test", "slots.0.delivery_time_range.time_from", "09:00"),
 				),
 			},
 		},
@@ -226,8 +226,8 @@ resource "emporix_delivery_time" "test" {
       capacity        = 100
 
       delivery_time_range = {
-        time_from = "10:00:00"
-        time_to   = "12:00:00"
+        time_from = "10:00"
+        time_to   = "12:00"
       }
 
       cut_off_time = {
@@ -305,8 +305,8 @@ resource "emporix_delivery_time" "test" {
       capacity        = 150
 
       delivery_time_range = {
-        time_from = "09:00:00"
-        time_to   = "12:00:00"
+        time_from = "09:00"
+        time_to   = "12:00"
       }
 
       cut_off_time = {
@@ -411,8 +411,8 @@ resource "emporix_delivery_time" "test" {
       capacity        = 50
 
       delivery_time_range = {
-        time_from = "10:00:00"
-        time_to   = "12:00:00"
+        time_from = "10:00"
+        time_to   = "12:00"
       }
 
       cut_off_time = {
@@ -425,8 +425,8 @@ resource "emporix_delivery_time" "test" {
       capacity        = 30
 
       delivery_time_range = {
-        time_from = "14:00:00"
-        time_to   = "16:00:00"
+        time_from = "14:00"
+        time_to   = "16:00"
       }
 
       cut_off_time = {
@@ -505,8 +505,8 @@ resource "emporix_delivery_time" "test" {
       capacity        = 200
 
       delivery_time_range = {
-        time_from = "08:00:00"
-        time_to   = "18:00:00"
+        time_from = "08:00"
+        time_to   = "18:00"
       }
 
       cut_off_time = {
@@ -584,8 +584,8 @@ resource "emporix_delivery_time" "test" {
       capacity        = 20
 
       delivery_time_range = {
-        time_from = "09:00:00"
-        time_to   = "12:00:00"
+        time_from = "09:00"
+        time_to   = "12:00"
       }
 
       cut_off_time = {
@@ -664,8 +664,8 @@ resource "emporix_delivery_time" "test" {
       capacity        = 100
 
       delivery_time_range = {
-        time_from = "08:00:00"
-        time_to   = "20:00:00"
+        time_from = "08:00"
+        time_to   = "20:00"
       }
 
       cut_off_time = {

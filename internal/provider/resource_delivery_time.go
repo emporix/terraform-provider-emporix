@@ -236,22 +236,22 @@ func (r *DeliveryTimeResource) Schema(ctx context.Context, req resource.SchemaRe
 							Required:            true,
 							Attributes: map[string]schema.Attribute{
 								"time_from": schema.StringAttribute{
-									MarkdownDescription: "Start time in HH:MM:SS format (e.g., '10:00:00').",
+									MarkdownDescription: "Start time in HH:MM format (e.g., '10:00').",
 									Required:            true,
 									Validators: []validator.String{
 										stringvalidator.RegexMatches(
-											regexp.MustCompile(`^([0-1][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$`),
-											"must be in HH:MM:SS format (e.g., '10:00:00')",
+											regexp.MustCompile(`^([0-1][0-9]|2[0-3]):([0-5][0-9])$`),
+											"must be in HH:MM format (e.g., '10:00')",
 										),
 									},
 								},
 								"time_to": schema.StringAttribute{
-									MarkdownDescription: "End time in HH:MM:SS format (e.g., '12:00:00').",
+									MarkdownDescription: "End time in HH:MM format (e.g., '12:00').",
 									Required:            true,
 									Validators: []validator.String{
 										stringvalidator.RegexMatches(
-											regexp.MustCompile(`^([0-1][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$`),
-											"must be in HH:MM:SS format (e.g., '12:00:00')",
+											regexp.MustCompile(`^([0-1][0-9]|2[0-3]):([0-5][0-9])$`),
+											"must be in HH:MM format (e.g., '12:00')",
 										),
 									},
 								},
