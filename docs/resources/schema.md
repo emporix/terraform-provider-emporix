@@ -335,31 +335,90 @@ resource "emporix_schema" "entities" {
 - `id` (String) Schema identifier. Cannot be changed after creation. Changing this forces a new resource to be created.
 - `name` (Map of String) Schema name as a map of language code to name (e.g., {"en": "Product Schema", "de": "Produktschema"}). Provide at least one language translation.
 - `types` (List of String) List of schema types this schema applies to. Valid values: `CART`, `CATEGORY`, `COMPANY`, `COUPON`, `CUSTOMER`, `CUSTOMER_ADDRESS`, `ORDER`, `PRODUCT`, `QUOTE`, `RETURN`, `PRICE_LIST`, `SITE`, `CUSTOM_ENTITY`, `VENDOR`.
-- `attributes` (List of Object) List of schema attributes defining the structure. Each attribute has:
-  - `key` (String, Required) Unique attribute identifier.
-  - `name` (Map of String, Required) Attribute name as a map of language code to name.
-  - `type` (String, Required) Attribute type. Valid values: `TEXT`, `NUMBER`, `DECIMAL`, `BOOLEAN`, `DATE`, `TIME`, `DATE_TIME`, `ENUM`, `ARRAY`, `OBJECT`, `REFERENCE`.
-  - `metadata` (Object, Required) Attribute metadata with:
-    - `read_only` (Boolean, Required) Whether the attribute is read-only.
-    - `localized` (Boolean, Required) Whether the attribute is localized.
-    - `required` (Boolean, Required) Whether the attribute is required.
-    - `nullable` (Boolean, Required) Whether the attribute can be null.
-  - `description` (Map of String, Optional) Attribute description as a map of language code to description.
-  - `values` (List of Object, Optional) List of allowed values for `ENUM` or `REFERENCE` types. Each value has:
-    - `value` (String, Required) Allowed value string.
-  - `attributes` (List of Object, Optional) Nested attributes for `OBJECT` type. Has same structure as parent attributes (without further nesting).
-  - `array_type` (Object, Optional) Array type configuration for `ARRAY` attributes. Contains:
-    - `type` (String, Required) Element type for the array.
-    - `localized` (Boolean, Optional) Whether array elements are localized.
-    - `values` (List of Object, Optional) List of allowed values for `ENUM` array elements (same structure as values above).
+- `attributes` (Attributes List) List of schema attributes defining the structure. (see [below for nested schema](#nestedatt--attributes))
+
+<a id="nestedatt--attributes"></a>
+### Nested Schema for `attributes`
+
+Required:
+
+- `key` (String) Unique attribute identifier.
+- `name` (Map of String) Attribute name as a map of language code to name.
+- `type` (String) Attribute type. Valid values: `TEXT`, `NUMBER`, `DECIMAL`, `BOOLEAN`, `DATE`, `TIME`, `DATE_TIME`, `ENUM`, `ARRAY`, `OBJECT`, `REFERENCE`.
+- `metadata` (Attributes) Attribute metadata. (see [below for nested schema](#nestedatt--attributes--metadata))
+
+Optional:
+
+- `description` (Map of String) Attribute description as a map of language code to description.
+- `values` (Attributes List) List of allowed values for `ENUM` or `REFERENCE` types. (see [below for nested schema](#nestedatt--attributes--values))
+- `attributes` (Attributes List) Nested attributes for `OBJECT` type. Supports one level of nesting. (see [below for nested schema](#nestedatt--attributes--attributes))
+- `array_type` (Attributes) Array type configuration for `ARRAY` attributes. (see [below for nested schema](#nestedatt--attributes--array_type))
+
+<a id="nestedatt--attributes--metadata"></a>
+### Nested Schema for `attributes.metadata`
+
+Required:
+
+- `read_only` (Boolean) Whether the attribute is read-only.
+- `localized` (Boolean) Whether the attribute is localized.
+- `required` (Boolean) Whether the attribute is required.
+- `nullable` (Boolean) Whether the attribute can be null.
+
+<a id="nestedatt--attributes--values"></a>
+### Nested Schema for `attributes.values`
+
+Required:
+
+- `value` (String) Allowed value string for `ENUM` or `REFERENCE` type.
+
+<a id="nestedatt--attributes--attributes"></a>
+### Nested Schema for `attributes.attributes`
+
+Nested attributes for `OBJECT` type. Has the same structure as parent attributes but without further nesting.
+
+Required:
+
+- `key` (String) Unique attribute identifier.
+- `name` (Map of String) Attribute name as a map of language code to name.
+- `type` (String) Attribute type.
+- `metadata` (Attributes) Attribute metadata. (see [below for nested schema](#nestedatt--attributes--attributes--metadata))
+
+Optional:
+
+- `description` (Map of String) Attribute description as a map of language code to description.
+
+<a id="nestedatt--attributes--attributes--metadata"></a>
+#### Nested Schema for `attributes.attributes.metadata`
+
+Required:
+
+- `read_only` (Boolean) Whether the attribute is read-only.
+- `localized` (Boolean) Whether the attribute is localized.
+- `required` (Boolean) Whether the attribute is required.
+- `nullable` (Boolean) Whether the attribute can be null.
+
+<a id="nestedatt--attributes--array_type"></a>
+### Nested Schema for `attributes.array_type`
+
+Required:
+
+- `type` (String) Element type for the array.
+
+Optional:
+
+- `localized` (Boolean) Whether array elements are localized.
+- `values` (Attributes List) List of allowed values for `ENUM` array elements. (see [below for nested schema](#nestedatt--attributes--array_type--values))
+
+<a id="nestedatt--attributes--array_type--values"></a>
+#### Nested Schema for `attributes.array_type.values`
+
+Required:
+
+- `value` (String) Allowed value for `ENUM` array element.
 
 ## Outputs
 
-In addition to all input arguments, the following attributes are exported:
-
-- `schema_url` (String) The URL of the schema, as returned by the API in the `metadata.url` field. This can be used to reference the schema in other configurations or external systems.
-
-All input arguments (`id`, `name`, `types`, `attributes`) are also available as outputs and can be referenced from other resources or outputs.
+All input arguments (`id`, `name`, `types`, `attributes`) and the computed `schema_url` attribute are available as outputs and can be referenced from other resources or outputs.
 
 ### Referencing Outputs
 
