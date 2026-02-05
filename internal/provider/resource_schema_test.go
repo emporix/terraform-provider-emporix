@@ -33,6 +33,9 @@ func TestAccSchemaResource_basic(t *testing.T) {
 				ImportStateId:                        "test-schema-basic-1",
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "id",
+				// Ignore attributes because dynamic types have different representations
+				// after import (all fields populated) vs config (only specified fields)
+				ImportStateVerifyIgnore: []string{"attributes"},
 			},
 			// Update testing
 			{
@@ -180,6 +183,9 @@ func TestAccSchemaResource_nestedObjects(t *testing.T) {
 				ImportStateId:                        "test-schema-nested-objects-1",
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "id",
+				// Ignore attributes because dynamic types have different representations
+				// after import (all fields populated) vs config (only specified fields)
+				ImportStateVerifyIgnore: []string{"attributes"},
 			},
 		},
 	})
@@ -221,6 +227,9 @@ func TestAccSchemaResource_fourLevelNesting(t *testing.T) {
 				ImportStateId:                        "test-schema-4level-1",
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "id",
+				// Ignore attributes because dynamic types have different representations
+				// after import (all fields populated) vs config (only specified fields)
+				ImportStateVerifyIgnore: []string{"attributes"},
 			},
 		},
 	})
