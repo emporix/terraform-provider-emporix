@@ -52,10 +52,12 @@ func (r *SchemaResource) Schema(ctx context.Context, req resource.SchemaRequest,
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				MarkdownDescription: "Schema identifier. Cannot be changed after creation.",
-				Required:            true,
+				MarkdownDescription: "Schema identifier. If not provided, the API will generate one automatically. Cannot be changed after creation.",
+				Optional:            true,
+				Computed:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"name": schema.MapAttribute{
@@ -108,9 +110,15 @@ func (r *SchemaResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	tflog.Debug(ctx, "Creating schema", map[string]interface{}{
-		"id": data.ID.ValueString(),
-	})
+	// Log schema creation - id may be empty if auto-generated
+	schemaID := data.ID.ValueString()
+	if schemaID == "" {
+		tflog.Debug(ctx, "Creating schema with auto-generated ID")
+	} else {
+		tflog.Debug(ctx, "Creating schema", map[string]interface{}{
+			"id": schemaID,
+		})
+	}
 
 	// Parse name map
 	nameMap := make(map[string]string)
@@ -374,18 +382,18 @@ func convertAttributeToObject(ctx context.Context, schemaAttr SchemaAttribute) (
 
 	// Convert metadata
 	metadataAttrTypes := map[string]attr.Type{
-		"read_only":  types.BoolType,
-		"localized":  types.BoolType,
-		"required":   types.BoolType,
-		"nullable":   types.BoolType,
+		"read_only": types.BoolType,
+		"localized": types.BoolType,
+		"required":  types.BoolType,
+		"nullable":  types.BoolType,
 	}
 	var metadataObj types.Object
 	if schemaAttr.Metadata != nil {
 		metadataAttrValues := map[string]attr.Value{
-			"read_only":  types.BoolValue(schemaAttr.Metadata.ReadOnly),
-			"localized":  types.BoolValue(schemaAttr.Metadata.Localized),
-			"required":   types.BoolValue(schemaAttr.Metadata.Required),
-			"nullable":   types.BoolValue(schemaAttr.Metadata.Nullable),
+			"read_only": types.BoolValue(schemaAttr.Metadata.ReadOnly),
+			"localized": types.BoolValue(schemaAttr.Metadata.Localized),
+			"required":  types.BoolValue(schemaAttr.Metadata.Required),
+			"nullable":  types.BoolValue(schemaAttr.Metadata.Nullable),
 		}
 		metadataObj, d = types.ObjectValue(metadataAttrTypes, metadataAttrValues)
 		diags.Append(d...)
@@ -683,10 +691,10 @@ func getAttributeObjectType() map[string]attr.Type {
 		"description": types.MapType{ElemType: types.StringType},
 		"type":        types.StringType,
 		"metadata": types.ObjectType{AttrTypes: map[string]attr.Type{
-			"read_only":  types.BoolType,
-			"localized":  types.BoolType,
-			"required":   types.BoolType,
-			"nullable":   types.BoolType,
+			"read_only": types.BoolType,
+			"localized": types.BoolType,
+			"required":  types.BoolType,
+			"nullable":  types.BoolType,
 		}},
 		"values": types.ListType{ElemType: types.ObjectType{AttrTypes: map[string]attr.Type{
 			"value": types.StringType,

@@ -11,6 +11,36 @@ Manages schemas in Emporix. Schemas define the structure and validation rules fo
 
 **Delete Behavior:** When you remove the resource from Terraform or run `terraform destroy`, the schema is **deleted** from Emporix. Note that the database entry is removed, but any associated Cloudinary files persist.
 
+## Upgrading to v0.7.0
+
+~> **Breaking Change:** Version 0.7.0 introduces a breaking change to the `attributes` field. The internal representation changed from a static nested list to a dynamic type to support unlimited nesting depth.
+
+**If you are upgrading from v0.6.x or earlier**, you will encounter this error when running `terraform plan` or `terraform apply`:
+
+```
+Error: Unable to Read Previously Saved State for UpgradeResourceState
+
+AttributeName("attributes"): invalid JSON, expected "{", got "["
+```
+
+**To resolve this issue**, remove the affected resources from state and re-import them:
+
+```bash
+# Remove schema from state
+terraform state rm emporix_schema.your_resource_name
+
+# Re-import the schema
+terraform import emporix_schema.your_resource_name <schema-id>
+```
+
+Or remove all schema resources at once:
+
+```bash
+terraform state rm 'emporix_schema.*'
+```
+
+Then run `terraform apply` to refresh the state with the new format.
+
 ## Example Usage
 
 ### Basic Schema with Text Attributes
@@ -41,6 +71,41 @@ resource "emporix_schema" "product_custom" {
       }
     }
   ]
+}
+```
+
+### Schema with Auto-Generated ID
+
+When you don't specify an `id`, the Emporix API will automatically generate one:
+
+```terraform
+resource "emporix_schema" "auto_generated" {
+  # No 'id' specified - API will generate one automatically
+  name = {
+    en = "Auto Generated Schema"
+  }
+  types = ["CUSTOM_ENTITY"]
+
+  attributes = [
+    {
+      key = "customField"
+      name = {
+        en = "Custom Field"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    }
+  ]
+}
+
+# Reference the auto-generated ID
+output "auto_schema_id" {
+  value = emporix_schema.auto_generated.id
 }
 ```
 
@@ -454,10 +519,17 @@ resource "emporix_schema" "entities" {
 
 ### Required
 
-- `id` (String) Schema identifier. Cannot be changed after creation. Changing this forces a new resource to be created.
 - `name` (Map of String) Schema name as a map of language code to name (e.g., {"en": "Product Schema", "de": "Produktschema"}). Provide at least one language translation.
 - `types` (List of String) List of schema types this schema applies to. Valid values: `CART`, `CATEGORY`, `COMPANY`, `COUPON`, `CUSTOMER`, `CUSTOMER_ADDRESS`, `ORDER`, `PRODUCT`, `QUOTE`, `RETURN`, `PRICE_LIST`, `SITE`, `CUSTOM_ENTITY`, `VENDOR`.
 - `attributes` (Dynamic) List of schema attributes defining the structure. Supports unlimited nesting of OBJECT types. (see [below for nested schema](#nestedatt--attributes))
+
+### Optional
+
+- `id` (String) Schema identifier. If not provided, the API will generate one automatically. Cannot be changed after creation. Changing this forces a new resource to be created.
+
+### Read-Only
+
+- `schema_url` (String) The URL of the schema, as returned by the API in the metadata.url field.
 
 <a id="nestedatt--attributes"></a>
 ### Nested Schema for `attributes`

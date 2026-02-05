@@ -128,16 +128,16 @@ type TenantConfigurationUpdate struct {
 
 // Schema represents a schema in Emporix
 type Schema struct {
-	ID         string              `json:"id"`
-	Name       map[string]string   `json:"name"`
-	Types      []string            `json:"types"`
-	Attributes []SchemaAttribute   `json:"attributes"`
-	Metadata   *SchemaMetadata     `json:"metadata,omitempty"`
+	ID         string            `json:"id"`
+	Name       map[string]string `json:"name"`
+	Types      []string          `json:"types"`
+	Attributes []SchemaAttribute `json:"attributes"`
+	Metadata   *SchemaMetadata   `json:"metadata,omitempty"`
 }
 
 // SchemaCreate represents the creation payload for a schema
 type SchemaCreate struct {
-	ID         string            `json:"id"`
+	ID         string            `json:"id,omitempty"`
 	Name       map[string]string `json:"name"`
 	Types      []string          `json:"types"`
 	Attributes []SchemaAttribute `json:"attributes"`
@@ -145,10 +145,10 @@ type SchemaCreate struct {
 
 // SchemaUpdate represents the update payload for a schema
 type SchemaUpdate struct {
-	Name       map[string]string      `json:"name"`
-	Types      []string               `json:"types"`
-	Attributes []SchemaAttribute      `json:"attributes"`
-	Metadata   *SchemaMetadataUpdate  `json:"metadata"`
+	Name       map[string]string     `json:"name"`
+	Types      []string              `json:"types"`
+	Attributes []SchemaAttribute     `json:"attributes"`
+	Metadata   *SchemaMetadataUpdate `json:"metadata"`
 }
 
 // SchemaAttribute represents a schema attribute
@@ -165,10 +165,10 @@ type SchemaAttribute struct {
 
 // SchemaAttributeMetadata represents metadata for a schema attribute
 type SchemaAttributeMetadata struct {
-	ReadOnly   bool `json:"readOnly"`
-	Localized  bool `json:"localized"`
-	Required   bool `json:"required"`
-	Nullable   bool `json:"nullable"`
+	ReadOnly  bool `json:"readOnly"`
+	Localized bool `json:"localized"`
+	Required  bool `json:"required"`
+	Nullable  bool `json:"nullable"`
 }
 
 // SchemaAttributeValue represents a value for ENUM/REFERENCE type attributes
@@ -185,10 +185,10 @@ type SchemaArrayType struct {
 
 // SchemaMetadata represents metadata for a schema
 type SchemaMetadata struct {
-	Version    int       `json:"version"`
-	URL        string    `json:"url,omitempty"`
-	CreatedAt  string    `json:"createdAt,omitempty"`
-	ModifiedAt string    `json:"modifiedAt,omitempty"`
+	Version    int    `json:"version"`
+	URL        string `json:"url,omitempty"`
+	CreatedAt  string `json:"createdAt,omitempty"`
+	ModifiedAt string `json:"modifiedAt,omitempty"`
 }
 
 // SchemaMetadataUpdate represents metadata update for a schema
