@@ -210,6 +210,128 @@ resource "emporix_schema" "product_dimensions" {
 }
 ```
 
+### Schema with Deeply Nested OBJECT Attributes (OBJECT within OBJECT)
+
+```terraform
+resource "emporix_schema" "customer_address" {
+  id = "customer-address-schema"
+  name = {
+    en = "Customer Address Schema"
+  }
+  types = ["CUSTOMER"]
+
+  attributes = [
+    {
+      key = "primaryAddress"
+      name = {
+        en = "Primary Address"
+      }
+      type = "OBJECT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+      attributes = [
+        {
+          key = "street"
+          name = {
+            en = "Street"
+          }
+          type = "TEXT"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = true
+            nullable   = false
+          }
+        },
+        {
+          # Nested OBJECT within OBJECT - GPS coordinates
+          key = "coordinates"
+          name = {
+            en = "GPS Coordinates"
+          }
+          type = "OBJECT"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          attributes = [
+            {
+              key = "latitude"
+              name = {
+                en = "Latitude"
+              }
+              type = "DECIMAL"
+              metadata = {
+                read_only  = false
+                localized  = false
+                required   = true
+                nullable   = false
+              }
+            },
+            {
+              key = "longitude"
+              name = {
+                en = "Longitude"
+              }
+              type = "DECIMAL"
+              metadata = {
+                read_only  = false
+                localized  = false
+                required   = true
+                nullable   = false
+              }
+            }
+          ]
+        },
+        {
+          # Nested ENUM within OBJECT
+          key = "addressType"
+          name = {
+            en = "Address Type"
+          }
+          type = "ENUM"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          values = [
+            { value = "home" },
+            { value = "work" },
+            { value = "billing" }
+          ]
+        },
+        {
+          # Nested ARRAY within OBJECT
+          key = "phoneNumbers"
+          name = {
+            en = "Phone Numbers"
+          }
+          type = "ARRAY"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          array_type = {
+            type      = "TEXT"
+            localized = false
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
 ### Schema with ARRAY Type
 
 ```terraform
@@ -351,7 +473,7 @@ Optional:
 
 - `description` (Map of String) Attribute description as a map of language code to description.
 - `values` (Attributes List) List of allowed values for `ENUM` or `REFERENCE` types. (see [below for nested schema](#nestedatt--attributes--values))
-- `attributes` (Attributes List) Nested attributes for `OBJECT` type. Supports one level of nesting. (see [below for nested schema](#nestedatt--attributes--attributes))
+- `attributes` (Attributes List) Nested attributes for `OBJECT` type. Supports up to three additional levels of nesting (4 levels total). (see [below for nested schema](#nestedatt--attributes--attributes))
 - `array_type` (Attributes) Array type configuration for `ARRAY` attributes. (see [below for nested schema](#nestedatt--attributes--array_type))
 
 <a id="nestedatt--attributes--metadata"></a>
@@ -374,18 +496,21 @@ Required:
 <a id="nestedatt--attributes--attributes"></a>
 ### Nested Schema for `attributes.attributes`
 
-Nested attributes for `OBJECT` type. Has the same structure as parent attributes but without further nesting.
+Nested attributes for `OBJECT` type. Supports full attribute types including nested OBJECT, ENUM with values, and ARRAY with array_type.
 
 Required:
 
 - `key` (String) Unique attribute identifier.
 - `name` (Map of String) Attribute name as a map of language code to name.
-- `type` (String) Attribute type.
+- `type` (String) Attribute type. Valid values: `TEXT`, `NUMBER`, `DECIMAL`, `BOOLEAN`, `DATE`, `TIME`, `DATE_TIME`, `ENUM`, `ARRAY`, `OBJECT`, `REFERENCE`.
 - `metadata` (Attributes) Attribute metadata. (see [below for nested schema](#nestedatt--attributes--attributes--metadata))
 
 Optional:
 
 - `description` (Map of String) Attribute description as a map of language code to description.
+- `values` (Attributes List) List of allowed values for `ENUM` or `REFERENCE` types. (see [below for nested schema](#nestedatt--attributes--attributes--values))
+- `attributes` (Attributes List) Deeply nested attributes for `OBJECT` type (third level). (see [below for nested schema](#nestedatt--attributes--attributes--attributes))
+- `array_type` (Attributes) Array type configuration for `ARRAY` attributes. (see [below for nested schema](#nestedatt--attributes--attributes--array_type))
 
 <a id="nestedatt--attributes--attributes--metadata"></a>
 #### Nested Schema for `attributes.attributes.metadata`
@@ -396,6 +521,113 @@ Required:
 - `localized` (Boolean) Whether the attribute is localized.
 - `required` (Boolean) Whether the attribute is required.
 - `nullable` (Boolean) Whether the attribute can be null.
+
+<a id="nestedatt--attributes--attributes--values"></a>
+#### Nested Schema for `attributes.attributes.values`
+
+Required:
+
+- `value` (String) Allowed value string for `ENUM` or `REFERENCE` type.
+
+<a id="nestedatt--attributes--attributes--attributes"></a>
+#### Nested Schema for `attributes.attributes.attributes`
+
+Third level nested attributes for `OBJECT` type. Supports full attribute types including nested OBJECT (4th level), ENUM with values, and ARRAY with array_type.
+
+Required:
+
+- `key` (String) Unique attribute identifier.
+- `name` (Map of String) Attribute name as a map of language code to name.
+- `type` (String) Attribute type. Valid values: `TEXT`, `NUMBER`, `DECIMAL`, `BOOLEAN`, `DATE`, `TIME`, `DATE_TIME`, `ENUM`, `ARRAY`, `OBJECT`, `REFERENCE`.
+- `metadata` (Attributes) Attribute metadata. (see [below for nested schema](#nestedatt--attributes--attributes--attributes--metadata))
+
+Optional:
+
+- `description` (Map of String) Attribute description as a map of language code to description.
+- `values` (Attributes List) List of allowed values for `ENUM` or `REFERENCE` types. (see [below for nested schema](#nestedatt--attributes--attributes--attributes--values))
+- `attributes` (Attributes List) Fourth level nested attributes for `OBJECT` type (deepest level, no further nesting). (see [below for nested schema](#nestedatt--attributes--attributes--attributes--attributes))
+- `array_type` (Attributes) Array type configuration for `ARRAY` attributes. (see [below for nested schema](#nestedatt--attributes--attributes--attributes--array_type))
+
+<a id="nestedatt--attributes--attributes--attributes--metadata"></a>
+##### Nested Schema for `attributes.attributes.attributes.metadata`
+
+Required:
+
+- `read_only` (Boolean) Whether the attribute is read-only.
+- `localized` (Boolean) Whether the attribute is localized.
+- `required` (Boolean) Whether the attribute is required.
+- `nullable` (Boolean) Whether the attribute can be null.
+
+<a id="nestedatt--attributes--attributes--attributes--values"></a>
+##### Nested Schema for `attributes.attributes.attributes.values`
+
+Required:
+
+- `value` (String) Allowed value string for `ENUM` or `REFERENCE` type.
+
+<a id="nestedatt--attributes--attributes--attributes--attributes"></a>
+##### Nested Schema for `attributes.attributes.attributes.attributes`
+
+Fourth level (deepest) nested attributes for `OBJECT` type. This is the deepest level of nesting supported (no further nesting).
+
+Required:
+
+- `key` (String) Unique attribute identifier.
+- `name` (Map of String) Attribute name as a map of language code to name.
+- `type` (String) Attribute type.
+- `metadata` (Attributes) Attribute metadata. (see [below for nested schema](#nestedatt--attributes--attributes--attributes--attributes--metadata))
+
+Optional:
+
+- `description` (Map of String) Attribute description as a map of language code to description.
+
+<a id="nestedatt--attributes--attributes--attributes--attributes--metadata"></a>
+###### Nested Schema for `attributes.attributes.attributes.attributes.metadata`
+
+Required:
+
+- `read_only` (Boolean) Whether the attribute is read-only.
+- `localized` (Boolean) Whether the attribute is localized.
+- `required` (Boolean) Whether the attribute is required.
+- `nullable` (Boolean) Whether the attribute can be null.
+
+<a id="nestedatt--attributes--attributes--attributes--array_type"></a>
+##### Nested Schema for `attributes.attributes.attributes.array_type`
+
+Required:
+
+- `type` (String) Element type for the array.
+
+Optional:
+
+- `localized` (Boolean) Whether array elements are localized.
+- `values` (Attributes List) List of allowed values for `ENUM` array elements. (see [below for nested schema](#nestedatt--attributes--attributes--attributes--array_type--values))
+
+<a id="nestedatt--attributes--attributes--attributes--array_type--values"></a>
+###### Nested Schema for `attributes.attributes.attributes.array_type.values`
+
+Required:
+
+- `value` (String) Allowed value for `ENUM` array element.
+
+<a id="nestedatt--attributes--attributes--array_type"></a>
+#### Nested Schema for `attributes.attributes.array_type`
+
+Required:
+
+- `type` (String) Element type for the array.
+
+Optional:
+
+- `localized` (Boolean) Whether array elements are localized.
+- `values` (Attributes List) List of allowed values for `ENUM` array elements. (see [below for nested schema](#nestedatt--attributes--attributes--array_type--values))
+
+<a id="nestedatt--attributes--attributes--array_type--values"></a>
+##### Nested Schema for `attributes.attributes.array_type.values`
+
+Required:
+
+- `value` (String) Allowed value for `ENUM` array element.
 
 <a id="nestedatt--attributes--array_type"></a>
 ### Nested Schema for `attributes.array_type`
@@ -549,7 +781,14 @@ Each attribute has metadata that controls its behavior:
 ## Working with Nested Attributes
 
 ### OBJECT Type
-OBJECT type attributes can contain nested attributes. Example:
+OBJECT type attributes can contain nested attributes. Nested attributes support the full range of types including OBJECT (for deeper nesting), ENUM (with values), and ARRAY (with array_type). The provider supports up to four levels of nesting:
+
+1. **Top-level attributes** - Full support for all types
+2. **Nested attributes** (within OBJECT) - Full support for all types including nested OBJECT, ENUM with values, ARRAY with array_type
+3. **Deeply nested attributes** (OBJECT within OBJECT) - Full support for all types including nested OBJECT, ENUM with values, ARRAY with array_type
+4. **Fourth level attributes** (deepest level) - Basic types only (TEXT, NUMBER, DECIMAL, BOOLEAN, DATE, TIME, DATE_TIME)
+
+Example with deeply nested OBJECT:
 
 ```terraform
 {
@@ -575,15 +814,56 @@ OBJECT type attributes can contain nested attributes. Example:
       }
     },
     {
-      key = "city"
-      name = { en = "City" }
-      type = "TEXT"
+      # Nested OBJECT within OBJECT
+      key = "coordinates"
+      name = { en = "GPS Coordinates" }
+      type = "OBJECT"
       metadata = {
         read_only = false
         localized = false
-        required  = true
-        nullable  = false
+        required  = false
+        nullable  = true
       }
+      attributes = [
+        {
+          key = "latitude"
+          name = { en = "Latitude" }
+          type = "DECIMAL"
+          metadata = {
+            read_only = false
+            localized = false
+            required  = true
+            nullable  = false
+          }
+        },
+        {
+          key = "longitude"
+          name = { en = "Longitude" }
+          type = "DECIMAL"
+          metadata = {
+            read_only = false
+            localized = false
+            required  = true
+            nullable  = false
+          }
+        }
+      ]
+    },
+    {
+      # Nested ENUM within OBJECT
+      key = "addressType"
+      name = { en = "Address Type" }
+      type = "ENUM"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = false
+        nullable  = true
+      }
+      values = [
+        { value = "home" },
+        { value = "work" }
+      ]
     }
   ]
 }
@@ -654,7 +934,7 @@ Make sure the schema is not actively used before deleting it.
 
 4. **Use ENUM for predefined values**: When attributes have a fixed set of allowed values, use `ENUM` type with `values` list.
 
-5. **Organize complex data with OBJECT**: Group related attributes using `OBJECT` type for better structure.
+5. **Organize complex data with OBJECT**: Group related attributes using `OBJECT` type for better structure. You can nest OBJECT within OBJECT for complex hierarchical data (up to 4 levels deep).
 
 6. **Version your schemas**: Consider including version numbers in schema IDs for easier migration (e.g., `product-custom-v1`).
 
@@ -664,4 +944,4 @@ Make sure the schema is not actively used before deleting it.
 - The `name` field is required and must contain at least one language translation.
 - Schemas support multiple entity types - a single schema can apply to multiple types.
 - Updates to schemas require providing the `metadata.version` field, which is handled automatically by the provider.
-- Nested attributes (in OBJECT type) cannot be infinitely nested - only one level of nesting is supported.
+- Nested OBJECT attributes support up to four levels of depth: top-level → nested → deeply nested → fourth level.
