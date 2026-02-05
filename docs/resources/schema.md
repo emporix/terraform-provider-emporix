@@ -527,10 +527,6 @@ resource "emporix_schema" "entities" {
 
 - `id` (String) Schema identifier. If not provided, the API will generate one automatically. Cannot be changed after creation. Changing this forces a new resource to be created.
 
-### Read-Only
-
-- `schema_url` (String) The URL of the schema, as returned by the API in the metadata.url field.
-
 <a id="nestedatt--attributes"></a>
 ### Nested Schema for `attributes`
 
