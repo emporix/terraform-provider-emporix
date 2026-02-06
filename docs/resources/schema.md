@@ -11,6 +11,36 @@ Manages schemas in Emporix. Schemas define the structure and validation rules fo
 
 **Delete Behavior:** When you remove the resource from Terraform or run `terraform destroy`, the schema is **deleted** from Emporix. Note that the database entry is removed, but any associated Cloudinary files persist.
 
+## Upgrading to v0.7.0
+
+~> **Breaking Change:** Version 0.7.0 introduces a breaking change to the `attributes` field. The internal representation changed from a static nested list to a dynamic type to support unlimited nesting depth.
+
+**If you are upgrading from v0.6.x or earlier**, you will encounter this error when running `terraform plan` or `terraform apply`:
+
+```
+Error: Unable to Read Previously Saved State for UpgradeResourceState
+
+AttributeName("attributes"): invalid JSON, expected "{", got "["
+```
+
+**To resolve this issue**, remove the affected resources from state and re-import them:
+
+```bash
+# Remove schema from state
+terraform state rm emporix_schema.your_resource_name
+
+# Re-import the schema
+terraform import emporix_schema.your_resource_name <schema-id>
+```
+
+Or remove all schema resources at once:
+
+```bash
+terraform state rm 'emporix_schema.*'
+```
+
+Then run `terraform apply` to refresh the state with the new format.
+
 ## Example Usage
 
 ### Basic Schema with Text Attributes
@@ -41,6 +71,41 @@ resource "emporix_schema" "product_custom" {
       }
     }
   ]
+}
+```
+
+### Schema with Auto-Generated ID
+
+When you don't specify an `id`, the Emporix API will automatically generate one:
+
+```terraform
+resource "emporix_schema" "auto_generated" {
+  # No 'id' specified - API will generate one automatically
+  name = {
+    en = "Auto Generated Schema"
+  }
+  types = ["CUSTOM_ENTITY"]
+
+  attributes = [
+    {
+      key = "customField"
+      name = {
+        en = "Custom Field"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    }
+  ]
+}
+
+# Reference the auto-generated ID
+output "auto_schema_id" {
+  value = emporix_schema.auto_generated.id
 }
 ```
 
@@ -210,6 +275,128 @@ resource "emporix_schema" "product_dimensions" {
 }
 ```
 
+### Schema with Deeply Nested OBJECT Attributes (OBJECT within OBJECT)
+
+```terraform
+resource "emporix_schema" "customer_address" {
+  id = "customer-address-schema"
+  name = {
+    en = "Customer Address Schema"
+  }
+  types = ["CUSTOMER"]
+
+  attributes = [
+    {
+      key = "primaryAddress"
+      name = {
+        en = "Primary Address"
+      }
+      type = "OBJECT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+      attributes = [
+        {
+          key = "street"
+          name = {
+            en = "Street"
+          }
+          type = "TEXT"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = true
+            nullable   = false
+          }
+        },
+        {
+          # Nested OBJECT within OBJECT - GPS coordinates
+          key = "coordinates"
+          name = {
+            en = "GPS Coordinates"
+          }
+          type = "OBJECT"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          attributes = [
+            {
+              key = "latitude"
+              name = {
+                en = "Latitude"
+              }
+              type = "DECIMAL"
+              metadata = {
+                read_only  = false
+                localized  = false
+                required   = true
+                nullable   = false
+              }
+            },
+            {
+              key = "longitude"
+              name = {
+                en = "Longitude"
+              }
+              type = "DECIMAL"
+              metadata = {
+                read_only  = false
+                localized  = false
+                required   = true
+                nullable   = false
+              }
+            }
+          ]
+        },
+        {
+          # Nested ENUM within OBJECT
+          key = "addressType"
+          name = {
+            en = "Address Type"
+          }
+          type = "ENUM"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          values = [
+            { value = "home" },
+            { value = "work" },
+            { value = "billing" }
+          ]
+        },
+        {
+          # Nested ARRAY within OBJECT
+          key = "phoneNumbers"
+          name = {
+            en = "Phone Numbers"
+          }
+          type = "ARRAY"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          array_type = {
+            type      = "TEXT"
+            localized = false
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
 ### Schema with ARRAY Type
 
 ```terraform
@@ -332,10 +519,13 @@ resource "emporix_schema" "entities" {
 
 ### Required
 
-- `id` (String) Schema identifier. Cannot be changed after creation. Changing this forces a new resource to be created.
 - `name` (Map of String) Schema name as a map of language code to name (e.g., {"en": "Product Schema", "de": "Produktschema"}). Provide at least one language translation.
 - `types` (List of String) List of schema types this schema applies to. Valid values: `CART`, `CATEGORY`, `COMPANY`, `COUPON`, `CUSTOMER`, `CUSTOMER_ADDRESS`, `ORDER`, `PRODUCT`, `QUOTE`, `RETURN`, `PRICE_LIST`, `SITE`, `CUSTOM_ENTITY`, `VENDOR`.
-- `attributes` (Attributes List) List of schema attributes defining the structure. (see [below for nested schema](#nestedatt--attributes))
+- `attributes` (Dynamic) List of schema attributes defining the structure. Supports unlimited nesting of OBJECT types. (see [below for nested schema](#nestedatt--attributes))
+
+### Optional
+
+- `id` (String) Schema identifier. If not provided, the API will generate one automatically. Cannot be changed after creation. Changing this forces a new resource to be created.
 
 <a id="nestedatt--attributes"></a>
 ### Nested Schema for `attributes`
@@ -351,7 +541,7 @@ Optional:
 
 - `description` (Map of String) Attribute description as a map of language code to description.
 - `values` (Attributes List) List of allowed values for `ENUM` or `REFERENCE` types. (see [below for nested schema](#nestedatt--attributes--values))
-- `attributes` (Attributes List) Nested attributes for `OBJECT` type. Supports one level of nesting. (see [below for nested schema](#nestedatt--attributes--attributes))
+- `attributes` (Dynamic List) Nested attributes for `OBJECT` type. Supports unlimited nesting depth. (see [below for nested schema](#nestedatt--attributes--attributes))
 - `array_type` (Attributes) Array type configuration for `ARRAY` attributes. (see [below for nested schema](#nestedatt--attributes--array_type))
 
 <a id="nestedatt--attributes--metadata"></a>
@@ -374,28 +564,21 @@ Required:
 <a id="nestedatt--attributes--attributes"></a>
 ### Nested Schema for `attributes.attributes`
 
-Nested attributes for `OBJECT` type. Has the same structure as parent attributes but without further nesting.
+Nested attributes for `OBJECT` type. Supports unlimited nesting depth - each nested attribute has the same structure as top-level attributes and can contain further nested OBJECT types.
 
 Required:
 
 - `key` (String) Unique attribute identifier.
 - `name` (Map of String) Attribute name as a map of language code to name.
-- `type` (String) Attribute type.
-- `metadata` (Attributes) Attribute metadata. (see [below for nested schema](#nestedatt--attributes--attributes--metadata))
+- `type` (String) Attribute type. Valid values: `TEXT`, `NUMBER`, `DECIMAL`, `BOOLEAN`, `DATE`, `TIME`, `DATE_TIME`, `ENUM`, `ARRAY`, `OBJECT`, `REFERENCE`.
+- `metadata` (Object) Attribute metadata with `read_only`, `localized`, `required`, and `nullable` booleans.
 
 Optional:
 
 - `description` (Map of String) Attribute description as a map of language code to description.
-
-<a id="nestedatt--attributes--attributes--metadata"></a>
-#### Nested Schema for `attributes.attributes.metadata`
-
-Required:
-
-- `read_only` (Boolean) Whether the attribute is read-only.
-- `localized` (Boolean) Whether the attribute is localized.
-- `required` (Boolean) Whether the attribute is required.
-- `nullable` (Boolean) Whether the attribute can be null.
+- `values` (List of Object) List of allowed values for `ENUM` or `REFERENCE` types. Each value has a `value` string field.
+- `attributes` (List) Further nested attributes for `OBJECT` type (recursive, unlimited depth).
+- `array_type` (Object) Array type configuration for `ARRAY` attributes with `type`, `localized`, and optional `values` fields.
 
 <a id="nestedatt--attributes--array_type"></a>
 ### Nested Schema for `attributes.array_type`
@@ -549,7 +732,19 @@ Each attribute has metadata that controls its behavior:
 ## Working with Nested Attributes
 
 ### OBJECT Type
-OBJECT type attributes can contain nested attributes. Example:
+OBJECT type attributes can contain nested attributes. Nested attributes support the full range of types including OBJECT (for deeper nesting), ENUM (with values), and ARRAY (with array_type). **The provider supports unlimited nesting depth** - you can nest OBJECT within OBJECT as deeply as your use case requires.
+
+Each nested attribute has the same structure as top-level attributes:
+- `key` - Unique identifier
+- `name` - Localized name map
+- `type` - Attribute type (TEXT, NUMBER, OBJECT, etc.)
+- `metadata` - Read-only, localized, required, nullable flags
+- `description` - Optional localized description
+- `values` - For ENUM/REFERENCE types
+- `attributes` - For nested OBJECT types (recursive)
+- `array_type` - For ARRAY types
+
+Example with deeply nested OBJECT:
 
 ```terraform
 {
@@ -575,15 +770,56 @@ OBJECT type attributes can contain nested attributes. Example:
       }
     },
     {
-      key = "city"
-      name = { en = "City" }
-      type = "TEXT"
+      # Nested OBJECT within OBJECT
+      key = "coordinates"
+      name = { en = "GPS Coordinates" }
+      type = "OBJECT"
       metadata = {
         read_only = false
         localized = false
-        required  = true
-        nullable  = false
+        required  = false
+        nullable  = true
       }
+      attributes = [
+        {
+          key = "latitude"
+          name = { en = "Latitude" }
+          type = "DECIMAL"
+          metadata = {
+            read_only = false
+            localized = false
+            required  = true
+            nullable  = false
+          }
+        },
+        {
+          key = "longitude"
+          name = { en = "Longitude" }
+          type = "DECIMAL"
+          metadata = {
+            read_only = false
+            localized = false
+            required  = true
+            nullable  = false
+          }
+        }
+      ]
+    },
+    {
+      # Nested ENUM within OBJECT
+      key = "addressType"
+      name = { en = "Address Type" }
+      type = "ENUM"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = false
+        nullable  = true
+      }
+      values = [
+        { value = "home" },
+        { value = "work" }
+      ]
     }
   ]
 }
@@ -654,7 +890,7 @@ Make sure the schema is not actively used before deleting it.
 
 4. **Use ENUM for predefined values**: When attributes have a fixed set of allowed values, use `ENUM` type with `values` list.
 
-5. **Organize complex data with OBJECT**: Group related attributes using `OBJECT` type for better structure.
+5. **Organize complex data with OBJECT**: Group related attributes using `OBJECT` type for better structure. You can nest OBJECT within OBJECT for complex hierarchical data (unlimited depth).
 
 6. **Version your schemas**: Consider including version numbers in schema IDs for easier migration (e.g., `product-custom-v1`).
 
@@ -664,4 +900,4 @@ Make sure the schema is not actively used before deleting it.
 - The `name` field is required and must contain at least one language translation.
 - Schemas support multiple entity types - a single schema can apply to multiple types.
 - Updates to schemas require providing the `metadata.version` field, which is handled automatically by the provider.
-- Nested attributes (in OBJECT type) cannot be infinitely nested - only one level of nesting is supported.
+- Nested OBJECT attributes support unlimited nesting depth.

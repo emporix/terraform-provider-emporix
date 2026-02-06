@@ -259,15 +259,25 @@ func (r *SiteSettingsResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	// Step 2: Add mixins via PATCH (if any)
+	// Step 2: Add mixins via POST (if any)
 	if mixinsToCreate != nil && len(mixinsToCreate) > 0 {
-		err := r.client.PatchSiteMixins(ctx, plan.Code.ValueString(), mixinsToCreate, metadataToCreate)
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Error adding mixins",
-				fmt.Sprintf("Could not add mixins to site: %s", err.Error()),
-			)
-			return
+		for mixinName, mixinFields := range mixinsToCreate {
+			fields, _ := mixinFields.(map[string]interface{})
+			if fields == nil {
+				fields = make(map[string]interface{})
+			}
+			schemaURL := ""
+			if metadataToCreate != nil && metadataToCreate.Mixins != nil {
+				schemaURL = metadataToCreate.Mixins[mixinName]
+			}
+			err := r.client.PostSiteMixin(ctx, plan.Code.ValueString(), mixinName, fields, schemaURL)
+			if err != nil {
+				resp.Diagnostics.AddError(
+					"Error adding mixin",
+					fmt.Sprintf("Could not add mixin '%s' to site: %s", mixinName, err.Error()),
+				)
+				return
+			}
 		}
 	}
 
@@ -428,7 +438,7 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 		}
 	}
 
-	// Handle mixins separately via PATCH/DELETE (even if regular fields didn't change)
+	// Handle mixins separately via POST/PUT/DELETE (even if regular fields didn't change)
 	mixinsChanged := !plan.Mixins.Equal(state.Mixins)
 
 	if mixinsChanged {
@@ -468,40 +478,42 @@ func (r *SiteSettingsResource) Update(ctx context.Context, req resource.UpdateRe
 			}
 		}
 
-		// Update/add mixins via PATCH (all new mixins)
-		if len(newMixinsList) > 0 {
-			metadata := &Metadata{
-				Mixins: make(map[string]string),
-			}
-			mixinsData := make(map[string]interface{})
+		// Add new mixins via POST, update existing mixins via PUT
+		for _, mixin := range newMixinsList {
+			mixinName := mixin.Name.ValueString()
+			schemaURL := mixin.SchemaURL.ValueString()
 
-			for _, mixin := range newMixinsList {
-				mixinName := mixin.Name.ValueString()
-
-				// Add schema URL to metadata
-				metadata.Mixins[mixinName] = mixin.SchemaURL.ValueString()
-
-				// Parse and add fields data
-				if !mixin.Fields.IsNull() && mixin.Fields.ValueString() != "" {
-					var fieldsData map[string]interface{}
-					if err := json.Unmarshal([]byte(mixin.Fields.ValueString()), &fieldsData); err != nil {
-						resp.Diagnostics.AddError(
-							"Error parsing mixin fields",
-							fmt.Sprintf("Could not parse mixin '%s' fields JSON: %s", mixinName, err.Error()),
-						)
-						return
-					}
-					mixinsData[mixinName] = fieldsData
+			fields := make(map[string]interface{})
+			if !mixin.Fields.IsNull() && mixin.Fields.ValueString() != "" {
+				if err := json.Unmarshal([]byte(mixin.Fields.ValueString()), &fields); err != nil {
+					resp.Diagnostics.AddError(
+						"Error parsing mixin fields",
+						fmt.Sprintf("Could not parse mixin '%s' fields JSON: %s", mixinName, err.Error()),
+					)
+					return
 				}
 			}
 
-			err := r.client.PatchSiteMixins(ctx, plan.Code.ValueString(), mixinsData, metadata)
-			if err != nil {
-				resp.Diagnostics.AddError(
-					"Error updating mixins",
-					fmt.Sprintf("Could not update mixins: %s", err.Error()),
-				)
-				return
+			if oldMixinsMap[mixinName] {
+				// Mixin already exists — update via PUT
+				err := r.client.PutSiteMixin(ctx, plan.Code.ValueString(), mixinName, fields, schemaURL)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						"Error updating mixin",
+						fmt.Sprintf("Could not update mixin '%s': %s", mixinName, err.Error()),
+					)
+					return
+				}
+			} else {
+				// New mixin — create via POST
+				err := r.client.PostSiteMixin(ctx, plan.Code.ValueString(), mixinName, fields, schemaURL)
+				if err != nil {
+					resp.Diagnostics.AddError(
+						"Error creating mixin",
+						fmt.Sprintf("Could not create mixin '%s': %s", mixinName, err.Error()),
+					)
+					return
+				}
 			}
 		}
 	}

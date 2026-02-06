@@ -283,24 +283,52 @@ func (c *EmporixClient) DeleteSite(ctx context.Context, siteCode string) error {
 	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK)
 }
 
-// PatchSiteMixins updates mixins and metadata using PATCH
-func (c *EmporixClient) PatchSiteMixins(ctx context.Context, siteCode string, mixins map[string]interface{}, metadata *Metadata) error {
-	path := fmt.Sprintf("/site/%s/sites/%s", strings.ToLower(c.Tenant), siteCode)
+// PostSiteMixin creates a new mixin using POST
+func (c *EmporixClient) PostSiteMixin(ctx context.Context, siteCode string, mixinName string, fields map[string]interface{}, schemaURL string) error {
+	path := fmt.Sprintf("/site/%s/sites/%s/mixins", strings.ToLower(c.Tenant), siteCode)
 
-	patchData := make(map[string]interface{}, 2)
-
-	if mixins != nil {
-		patchData["mixins"] = mixins
+	mixinData := make(map[string]interface{})
+	for k, v := range fields {
+		mixinData[k] = v
+	}
+	mixinData["metadata"] = map[string]interface{}{
+		"schema": schemaURL,
 	}
 
-	// Only include metadata.mixins (schema URLs), NOT version
-	if metadata != nil && metadata.Mixins != nil && len(metadata.Mixins) > 0 {
-		patchData["metadata"] = map[string]interface{}{
-			"mixins": metadata.Mixins,
-		}
+	postData := map[string]interface{}{
+		mixinName: mixinData,
 	}
 
-	resp, err := c.doRequest(ctx, "PATCH", path, patchData, nil)
+	resp, err := c.doRequest(ctx, "POST", path, postData, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
+		return fmt.Errorf("failed to create site mixin %s: %w", mixinName, err)
+	}
+
+	return nil
+}
+
+// PutSiteMixin fully updates an existing mixin using PUT
+func (c *EmporixClient) PutSiteMixin(ctx context.Context, siteCode string, mixinName string, fields map[string]interface{}, schemaURL string) error {
+	path := fmt.Sprintf("/site/%s/sites/%s/mixins/%s", strings.ToLower(c.Tenant), siteCode, mixinName)
+
+	putData := make(map[string]interface{})
+	for k, v := range fields {
+		putData[k] = v
+	}
+	putData["metadata"] = map[string]interface{}{
+		"schema": schemaURL,
+	}
+
+	resp, err := c.doRequest(ctx, "PUT", path, putData, nil)
 	if err != nil {
 		return err
 	}
@@ -312,7 +340,7 @@ func (c *EmporixClient) PatchSiteMixins(ctx context.Context, siteCode string, mi
 		return fmt.Errorf("error reading response body: %w", readErr)
 	}
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
-		return fmt.Errorf("failed to patch site mixins: %w", err)
+		return fmt.Errorf("failed to put site mixin %s: %w", mixinName, err)
 	}
 
 	return nil
