@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **emporix_schema**
   - make id field optional
 
+## Fixes
+- **emporix_sitesettings**
+  - make possible to update the mixin fields
+
 [0.7.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.7.0
 
 ## [0.6.2] - 2026-02-05
