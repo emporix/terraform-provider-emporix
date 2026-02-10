@@ -335,6 +335,207 @@ resource "emporix_sitesettings" "test" {
 `, code, includesTax)
 }
 
+func TestAccSiteSettingsResource_mixins(t *testing.T) {
+	code := fmt.Sprintf("test-mixin-%d", time.Now().Unix())
+	schemaId := fmt.Sprintf("ts-mxn-sch-%d", time.Now().Unix())
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSiteSettingsDestroy,
+		Steps: []resource.TestStep{
+			// Create site with a mixin that references a schema
+			{
+				Config: testAccSiteSettingsResourceConfigWithMixin(code, schemaId),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "code", code),
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "name", "Site With Mixin"),
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "mixins.#", "1"),
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "mixins.0.name", schemaId),
+					resource.TestCheckResourceAttrSet("emporix_sitesettings.test", "mixins.0.schema_url"),
+				),
+			},
+			// Update mixin fields
+			{
+				Config: testAccSiteSettingsResourceConfigWithMixinUpdated(code, schemaId),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "code", code),
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "mixins.#", "1"),
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "mixins.0.name", schemaId),
+				),
+			},
+		},
+	})
+}
+
+func testAccSiteSettingsResourceConfigWithMixin(code string, schemaId string) string {
+	return fmt.Sprintf(`
+resource "emporix_schema" "site_mixin" {
+  id = %[2]q
+  name = {
+    en = "Site Mixin Schema"
+  }
+  types = ["SITE"]
+
+  attributes = [
+    {
+      key = "displayName"
+      name = {
+        en = "Display Name"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    },
+    {
+      key = "maxItems"
+      name = {
+        en = "Max Items"
+      }
+      type = "NUMBER"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    },
+    {
+      key = "isEnabled"
+      name = {
+        en = "Is Enabled"
+      }
+      type = "BOOLEAN"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    }
+  ]
+}
+
+resource "emporix_sitesettings" "test" {
+  code             = %[1]q
+  name             = "Site With Mixin"
+  active           = true
+  default_language = "en"
+  languages        = ["en"]
+  currency         = "USD"
+  ship_to_countries = ["US"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
+
+  mixins = [
+    {
+      name       = emporix_schema.site_mixin.id
+      schema_url = emporix_schema.site_mixin.schema_url
+      fields     = jsonencode({
+        displayName = "Test Store"
+        maxItems    = 100
+        isEnabled   = true
+      })
+    }
+  ]
+}
+`, code, schemaId)
+}
+
+func testAccSiteSettingsResourceConfigWithMixinUpdated(code string, schemaId string) string {
+	return fmt.Sprintf(`
+resource "emporix_schema" "site_mixin" {
+  id = %[2]q
+  name = {
+    en = "Site Mixin Schema"
+  }
+  types = ["SITE"]
+
+  attributes = [
+    {
+      key = "displayName"
+      name = {
+        en = "Display Name"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    },
+    {
+      key = "maxItems"
+      name = {
+        en = "Max Items"
+      }
+      type = "NUMBER"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    },
+    {
+      key = "isEnabled"
+      name = {
+        en = "Is Enabled"
+      }
+      type = "BOOLEAN"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    }
+  ]
+}
+
+resource "emporix_sitesettings" "test" {
+  code             = %[1]q
+  name             = "Site With Mixin"
+  active           = true
+  default_language = "en"
+  languages        = ["en"]
+  currency         = "USD"
+  ship_to_countries = ["US"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+  }
+
+  mixins = [
+    {
+      name       = emporix_schema.site_mixin.id
+      schema_url = emporix_schema.site_mixin.schema_url
+      fields     = jsonencode({
+        displayName = "Updated Store Name"
+        maxItems    = 250
+        isEnabled   = false
+      })
+    }
+  ]
+}
+`, code, schemaId)
+}
+
 // testAccCheckSiteSettingsDestroy verifies that site settings have been deleted
 func testAccCheckSiteSettingsDestroy(s *terraform.State) error {
 	ctx := context.Background()

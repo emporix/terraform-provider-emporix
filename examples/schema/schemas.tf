@@ -272,7 +272,281 @@ resource "emporix_schema" "product_dimensions" {
   ]
 }
 
-# Example 5: Schema with ARRAY type
+# Example 5: Schema with deeply nested OBJECT attributes (OBJECT within OBJECT)
+resource "emporix_schema" "customer_address" {
+  id = "customer-address-schema"
+  name = {
+    en = "Customer Address Schema"
+  }
+  types = ["CUSTOMER"]
+
+  attributes = [
+    {
+      key = "primaryAddress"
+      name = {
+        en = "Primary Address"
+      }
+      description = {
+        en = "Customer's primary address with nested structure"
+      }
+      type = "OBJECT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+      attributes = [
+        {
+          key = "street"
+          name = {
+            en = "Street"
+          }
+          type = "TEXT"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = true
+            nullable   = false
+          }
+        },
+        {
+          key = "city"
+          name = {
+            en = "City"
+          }
+          type = "TEXT"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = true
+            nullable   = false
+          }
+        },
+        {
+          # Nested OBJECT within OBJECT - GPS coordinates
+          key = "coordinates"
+          name = {
+            en = "GPS Coordinates"
+          }
+          description = {
+            en = "Geographic coordinates for the address"
+          }
+          type = "OBJECT"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          attributes = [
+            {
+              key = "latitude"
+              name = {
+                en = "Latitude"
+              }
+              type = "DECIMAL"
+              metadata = {
+                read_only  = false
+                localized  = false
+                required   = true
+                nullable   = false
+              }
+            },
+            {
+              key = "longitude"
+              name = {
+                en = "Longitude"
+              }
+              type = "DECIMAL"
+              metadata = {
+                read_only  = false
+                localized  = false
+                required   = true
+                nullable   = false
+              }
+            }
+          ]
+        },
+        {
+          # Nested ENUM within OBJECT
+          key = "addressType"
+          name = {
+            en = "Address Type"
+          }
+          type = "ENUM"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          values = [
+            {
+              value = "home"
+            },
+            {
+              value = "work"
+            },
+            {
+              value = "billing"
+            },
+            {
+              value = "shipping"
+            }
+          ]
+        },
+        {
+          # Nested ARRAY within OBJECT
+          key = "phoneNumbers"
+          name = {
+            en = "Phone Numbers"
+          }
+          type = "ARRAY"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          array_type = {
+            type      = "TEXT"
+            localized = false
+          }
+        }
+      ]
+    }
+  ]
+}
+
+# Example 6: Schema with 4 levels of OBJECT nesting
+resource "emporix_schema" "organization_hierarchy" {
+  id = "organization-hierarchy-schema"
+  name = {
+    en = "Organization Hierarchy Schema"
+  }
+  types = ["CUSTOM_ENTITY"]
+
+  attributes = [
+    {
+      # Level 1: Organization
+      key = "organization"
+      name = {
+        en = "Organization"
+      }
+      type = "OBJECT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+      attributes = [
+        {
+          key = "orgName"
+          name = {
+            en = "Organization Name"
+          }
+          type = "TEXT"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = true
+            nullable   = false
+          }
+        },
+        {
+          # Level 2: Department
+          key = "department"
+          name = {
+            en = "Department"
+          }
+          type = "OBJECT"
+          metadata = {
+            read_only  = false
+            localized  = false
+            required   = false
+            nullable   = true
+          }
+          attributes = [
+            {
+              key = "deptName"
+              name = {
+                en = "Department Name"
+              }
+              type = "TEXT"
+              metadata = {
+                read_only  = false
+                localized  = false
+                required   = true
+                nullable   = false
+              }
+            },
+            {
+              # Level 3: Team
+              key = "team"
+              name = {
+                en = "Team"
+              }
+              type = "OBJECT"
+              metadata = {
+                read_only  = false
+                localized  = false
+                required   = false
+                nullable   = true
+              }
+              attributes = [
+                {
+                  key = "teamName"
+                  name = {
+                    en = "Team Name"
+                  }
+                  type = "TEXT"
+                  metadata = {
+                    read_only  = false
+                    localized  = false
+                    required   = true
+                    nullable   = false
+                  }
+                },
+                {
+                  # Level 4: memberName (deepest level - basic types only)
+                  key = "memberName"
+                  name = {
+                    en = "Member Name"
+                  }
+                  type = "TEXT"
+                  metadata = {
+                    read_only  = false
+                    localized  = false
+                    required   = false
+                    nullable   = true
+                  }
+                },
+                {
+                  # Level 4: memberRole (deepest level - basic types only)
+                  key = "memberRole"
+                  name = {
+                    en = "Member Role"
+                  }
+                  type = "TEXT"
+                  metadata = {
+                    read_only  = false
+                    localized  = false
+                    required   = false
+                    nullable   = true
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+# Example 7: Schema with ARRAY type
 resource "emporix_schema" "product_tags" {
   id = "product-tags-schema"
   name = {
@@ -301,7 +575,7 @@ resource "emporix_schema" "product_tags" {
   ]
 }
 
-# Example 6: Schema for multiple entity types
+# Example 8: Schema for multiple entity types
 resource "emporix_schema" "shared_metadata" {
   id = "shared-metadata-schema"
   name = {
@@ -339,7 +613,7 @@ resource "emporix_schema" "shared_metadata" {
   ]
 }
 
-# Example 7: Using for_each for multiple similar schemas
+# Example 9: Using for_each for multiple similar schemas
 locals {
   entity_schemas = {
     order = {
@@ -386,6 +660,46 @@ resource "emporix_schema" "entities" {
   ]
 }
 
+# Example 10: Schema without explicit ID (auto-generated by API)
+# When no ID is provided, the Emporix API will automatically generate one
+resource "emporix_schema" "auto_generated_id" {
+  # Note: 'id' is not specified - it will be auto-generated by the API
+  name = {
+    en = "Auto Generated ID Schema"
+    de = "Schema mit automatischer ID"
+  }
+  types = ["CUSTOM_ENTITY"]
+
+  attributes = [
+    {
+      key = "customField"
+      name = {
+        en = "Custom Field"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    },
+    {
+      key = "customNumber"
+      name = {
+        en = "Custom Number"
+      }
+      type = "NUMBER"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    }
+  ]
+}
+
 # Outputs
 output "product_schemas" {
   description = "Product schema IDs and URLs"
@@ -410,10 +724,18 @@ output "product_schema_urls" {
 output "customer_schema" {
   description = "Customer schema details"
   value = {
-    id         = emporix_schema.customer_extended.id
-    name       = lookup(emporix_schema.customer_extended.name, "en", "")
-    types      = emporix_schema.customer_extended.types
-    schema_url = emporix_schema.customer_extended.schema_url
+    extended = {
+      id         = emporix_schema.customer_extended.id
+      name       = lookup(emporix_schema.customer_extended.name, "en", "")
+      types      = emporix_schema.customer_extended.types
+      schema_url = emporix_schema.customer_extended.schema_url
+    }
+    address = {
+      id         = emporix_schema.customer_address.id
+      name       = lookup(emporix_schema.customer_address.name, "en", "")
+      types      = emporix_schema.customer_address.types
+      schema_url = emporix_schema.customer_address.schema_url
+    }
   }
 }
 
@@ -427,6 +749,24 @@ output "entity_schema_urls" {
   value       = { for key, schema in emporix_schema.entities : key => schema.schema_url }
 }
 
+output "organization_hierarchy_schema" {
+  description = "Organization hierarchy schema with 4-level nesting"
+  value = {
+    id         = emporix_schema.organization_hierarchy.id
+    name       = lookup(emporix_schema.organization_hierarchy.name, "en", "")
+    schema_url = emporix_schema.organization_hierarchy.schema_url
+  }
+}
+
+output "auto_generated_id_schema" {
+  description = "Schema with auto-generated ID"
+  value = {
+    id         = emporix_schema.auto_generated_id.id
+    name       = lookup(emporix_schema.auto_generated_id.name, "en", "")
+    schema_url = emporix_schema.auto_generated_id.schema_url
+  }
+}
+
 output "all_schema_ids" {
   description = "All schema IDs created"
   value = concat(
@@ -435,8 +775,11 @@ output "all_schema_ids" {
       emporix_schema.product_rating.id,
       emporix_schema.customer_extended.id,
       emporix_schema.product_dimensions.id,
+      emporix_schema.customer_address.id,
+      emporix_schema.organization_hierarchy.id,
       emporix_schema.product_tags.id,
-      emporix_schema.shared_metadata.id
+      emporix_schema.shared_metadata.id,
+      emporix_schema.auto_generated_id.id
     ],
     [for schema in emporix_schema.entities : schema.id]
   )
@@ -450,8 +793,11 @@ output "all_schema_urls" {
       emporix_schema.product_rating.schema_url,
       emporix_schema.customer_extended.schema_url,
       emporix_schema.product_dimensions.schema_url,
+      emporix_schema.customer_address.schema_url,
+      emporix_schema.organization_hierarchy.schema_url,
       emporix_schema.product_tags.schema_url,
-      emporix_schema.shared_metadata.schema_url
+      emporix_schema.shared_metadata.schema_url,
+      emporix_schema.auto_generated_id.schema_url
     ],
     [for schema in emporix_schema.entities : schema.schema_url]
   )
