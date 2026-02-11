@@ -1,6 +1,6 @@
 ---
 page_title: "emporix_tax Resource - terraform-provider-emporix"
-subcategory: "Tax & Compliance"
+subcategory: ""
 description: |-
   Manages tax configurations for countries.
 ---
