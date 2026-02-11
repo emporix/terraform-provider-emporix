@@ -271,54 +271,7 @@ To manage tax configurations, your client_id/secret pair must have:
 - `tax.tax_read` - Required for reading tax configurations
 - `tax.tax_manage` - Required for creating, updating, and deleting tax configurations
 
-## Constraints and Validation
-
-### Single Default Tax Class
-
-Only one tax class per country can be marked as `is_default = true`. If you attempt to create a configuration with multiple defaults, Terraform will fail validation during `terraform plan`:
-
-```
-Error: Multiple Default Tax Classes
-Only one tax class can be marked as default, but 2 tax classes have is_default = true.
-Please set is_default = true for only one tax class.
-```
-
-### Tax Class Ordering
-
-Tax classes are sorted by their `order` value in ascending order. This affects how they appear in the Emporix API and potentially in storefronts:
-
-- Order 1 appears first
-- Order 2 appears second
-- And so on...
-
-If you don't specify `order`, the API may assign default ordering.
-
-### Country Code Immutability
-
-The `country_code` attribute cannot be changed after creation. If you need to change it, you must:
-
-1. Destroy the existing resource
-2. Create a new resource with the new country code
-
-Terraform will automatically handle this if you change the `country_code` in your configuration (it will trigger a replace).
-
-## Delete Warning
-
-⚠️ **Important:** Deleting a tax configuration removes all tax class definitions for that country. Ensure the tax configuration is not actively used in product pricing or orders before deletion.
-
-## Notes
-
-- Country codes are immutable. To change the country, you must destroy and recreate the resource.
-- Tax rates should be expressed as decimals (e.g., 0.19 for 19%).
-- At least one tax class is required per country.
-- Only one tax class can be marked as default per country.
-- Tax class names should be provided in at least one language.
-- Tax classes are sorted by their `order` field when retrieved from the API.
-- The Emporix API requires `metadata.version` for updates (handled automatically by the provider).
-
-## Attributes Reference
-
-In addition to all arguments above, the following attributes are exported:
+## Outputs
 
 ### country_code
 
