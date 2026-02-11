@@ -787,7 +787,6 @@ func (c *EmporixClient) UpdateTax(ctx context.Context, locationCode string, upda
 	}
 
 	// PUT returned 204 No Content - construct state from request data
-	// This avoids pod-level cache issues (1-minute TTL)
 	tflog.Debug(ctx, "Update succeeded (204), constructing state from request data")
 
 	newVersion := 1
