@@ -5,7 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - 2026-01-28
+## [0.7.0] - 2026-02-10
+
+### BREAKING CHANGE
+- **emporix_schema**
+  - unlimited OBJECT nesting (requires resource remove and import to state)
+
+## Changes
+- **emporix_schema**
+  - make id field optional
+
+## Fixes
+- **emporix_sitesettings**
+  - make possible to update the mixin fields
+
+[0.7.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.7.0
+
+## [0.6.2] - 2026-02-05
+
+### Fixes
+- **emporix_schema**
+  - minor documentation fixes (correct nesting)
+
+[0.6.2]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.6.2
+
+## [0.6.1] - 2026-02-04
+
+### Improvements
+
+- **emporix_schema**
+  - added schema_url to resource output
+
+### Fixes
+- **emporix_delivery_time**
+  - correct time format (HH:MM) in delivery_time_range section
+
+[0.6.1]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.6.1
+
+## [0.6.0] - 2026-02-02
+
+### Added
+
+- **New Resource: emporix_schema** - Manage mixin schemas in Emporix
+  - Full CRUD operations
+
+[0.6.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.6.0
+
+## [0.5.0] - 2026-01-29
 
 ### Added
 

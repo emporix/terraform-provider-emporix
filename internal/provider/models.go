@@ -161,3 +161,78 @@ type TaxUpdate struct {
 	TaxClasses []TaxClass   `json:"taxClasses"`
 	Metadata   *Metadata    `json:"metadata,omitempty"`
 }
+
+// Schema represents a schema in Emporix
+type Schema struct {
+	ID         string            `json:"id"`
+	Name       map[string]string `json:"name"`
+	Types      []string          `json:"types"`
+	Attributes []SchemaAttribute `json:"attributes"`
+	Metadata   *SchemaMetadata   `json:"metadata,omitempty"`
+}
+
+// SchemaCreate represents the creation payload for a schema
+type SchemaCreate struct {
+	ID         string            `json:"id,omitempty"`
+	Name       map[string]string `json:"name"`
+	Types      []string          `json:"types"`
+	Attributes []SchemaAttribute `json:"attributes"`
+}
+
+// SchemaUpdate represents the update payload for a schema
+type SchemaUpdate struct {
+	Name       map[string]string     `json:"name"`
+	Types      []string              `json:"types"`
+	Attributes []SchemaAttribute     `json:"attributes"`
+	Metadata   *SchemaMetadataUpdate `json:"metadata"`
+}
+
+// SchemaAttribute represents a schema attribute
+type SchemaAttribute struct {
+	Key         string                   `json:"key"`
+	Name        map[string]string        `json:"name"`
+	Description map[string]string        `json:"description,omitempty"`
+	Type        string                   `json:"type"`
+	Metadata    *SchemaAttributeMetadata `json:"metadata"`
+	Values      []SchemaAttributeValue   `json:"values,omitempty"`
+	Attributes  []SchemaAttribute        `json:"attributes,omitempty"`
+	ArrayType   *SchemaArrayType         `json:"arrayType,omitempty"`
+}
+
+// SchemaAttributeMetadata represents metadata for a schema attribute
+type SchemaAttributeMetadata struct {
+	ReadOnly  bool `json:"readOnly"`
+	Localized bool `json:"localized"`
+	Required  bool `json:"required"`
+	Nullable  bool `json:"nullable"`
+}
+
+// SchemaAttributeValue represents a value for ENUM/REFERENCE type attributes
+type SchemaAttributeValue struct {
+	Value string `json:"value"`
+}
+
+// SchemaArrayType represents the type configuration for ARRAY attributes
+type SchemaArrayType struct {
+	Type      string                 `json:"type"`
+	Localized bool                   `json:"localized,omitempty"`
+	Values    []SchemaAttributeValue `json:"values,omitempty"`
+}
+
+// SchemaMetadata represents metadata for a schema
+type SchemaMetadata struct {
+	Version    int    `json:"version"`
+	URL        string `json:"url,omitempty"`
+	CreatedAt  string `json:"createdAt,omitempty"`
+	ModifiedAt string `json:"modifiedAt,omitempty"`
+}
+
+// SchemaMetadataUpdate represents metadata update for a schema
+type SchemaMetadataUpdate struct {
+	Version int `json:"version"`
+}
+
+// IdResponse represents a response containing just an ID
+type IdResponse struct {
+	ID string `json:"id"`
+}

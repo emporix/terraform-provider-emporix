@@ -215,7 +215,10 @@ func (c *EmporixClient) CreateSite(ctx context.Context, site *SiteSettings) erro
 	defer resp.Body.Close()
 
 	// Read body for error checking (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated)
 }
 
@@ -232,7 +235,10 @@ func (c *EmporixClient) GetSite(ctx context.Context, siteCode string) (*SiteSett
 	}
 
 	// Read body (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -254,7 +260,10 @@ func (c *EmporixClient) UpdateSite(ctx context.Context, siteCode string, patchDa
 	defer resp.Body.Close()
 
 	// Read body (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK)
 }
 
@@ -267,37 +276,71 @@ func (c *EmporixClient) DeleteSite(ctx context.Context, siteCode string) error {
 	defer resp.Body.Close()
 
 	// Read body (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK)
 }
 
-// PatchSiteMixins updates mixins and metadata using PATCH
-func (c *EmporixClient) PatchSiteMixins(ctx context.Context, siteCode string, mixins map[string]interface{}, metadata *Metadata) error {
-	path := fmt.Sprintf("/site/%s/sites/%s", strings.ToLower(c.Tenant), siteCode)
+// PostSiteMixin creates a new mixin using POST
+func (c *EmporixClient) PostSiteMixin(ctx context.Context, siteCode string, mixinName string, fields map[string]interface{}, schemaURL string) error {
+	path := fmt.Sprintf("/site/%s/sites/%s/mixins", strings.ToLower(c.Tenant), siteCode)
 
-	patchData := make(map[string]interface{}, 2)
-
-	if mixins != nil {
-		patchData["mixins"] = mixins
+	mixinData := make(map[string]interface{})
+	for k, v := range fields {
+		mixinData[k] = v
+	}
+	mixinData["metadata"] = map[string]interface{}{
+		"schema": schemaURL,
 	}
 
-	// Only include metadata.mixins (schema URLs), NOT version
-	if metadata != nil && metadata.Mixins != nil && len(metadata.Mixins) > 0 {
-		patchData["metadata"] = map[string]interface{}{
-			"mixins": metadata.Mixins,
-		}
+	postData := map[string]interface{}{
+		mixinName: mixinData,
 	}
 
-	resp, err := c.doRequest(ctx, "PATCH", path, patchData, nil)
+	resp, err := c.doRequest(ctx, "POST", path, postData, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
+		return fmt.Errorf("failed to create site mixin %s: %w", mixinName, err)
+	}
+
+	return nil
+}
+
+// PutSiteMixin fully updates an existing mixin using PUT
+func (c *EmporixClient) PutSiteMixin(ctx context.Context, siteCode string, mixinName string, fields map[string]interface{}, schemaURL string) error {
+	path := fmt.Sprintf("/site/%s/sites/%s/mixins/%s", strings.ToLower(c.Tenant), siteCode, mixinName)
+
+	putData := make(map[string]interface{})
+	for k, v := range fields {
+		putData[k] = v
+	}
+	putData["metadata"] = map[string]interface{}{
+		"schema": schemaURL,
+	}
+
+	resp, err := c.doRequest(ctx, "PUT", path, putData, nil)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
 	// Read body (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
-		return fmt.Errorf("failed to patch site mixins: %w", err)
+		return fmt.Errorf("failed to put site mixin %s: %w", mixinName, err)
 	}
 
 	return nil
@@ -313,7 +356,10 @@ func (c *EmporixClient) DeleteSiteMixin(ctx context.Context, siteCode string, mi
 	defer resp.Body.Close()
 
 	// Read body (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
 		return fmt.Errorf("failed to delete mixin %s: %w", mixinName, err)
 	}
@@ -331,7 +377,10 @@ func (c *EmporixClient) CreatePaymentMode(ctx context.Context, paymentMode *Paym
 	defer resp.Body.Close()
 
 	// Read body (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -358,7 +407,10 @@ func (c *EmporixClient) GetPaymentMode(ctx context.Context, id string) (*Payment
 	}
 
 	// Read body (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -381,7 +433,10 @@ func (c *EmporixClient) UpdatePaymentMode(ctx context.Context, id string, update
 	defer resp.Body.Close()
 
 	// Read body (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -404,7 +459,10 @@ func (c *EmporixClient) DeletePaymentMode(ctx context.Context, id string) error 
 	defer resp.Body.Close()
 
 	// Read body (already logged in doRequest)
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 	return c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent)
 }
 
@@ -426,7 +484,10 @@ func (c *EmporixClient) GetCountry(ctx context.Context, code string) (*Country, 
 		return nil, &NotFoundError{}
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -468,7 +529,10 @@ func (c *EmporixClient) UpdateCountry(ctx context.Context, code string, updateDa
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
 		return nil, err
@@ -495,7 +559,10 @@ func (c *EmporixClient) CreateCurrency(ctx context.Context, currency *CurrencyCr
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
 		return nil, err
@@ -533,7 +600,10 @@ func (c *EmporixClient) GetCurrency(ctx context.Context, code string) (*Currency
 		return nil, &NotFoundError{}
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -576,7 +646,10 @@ func (c *EmporixClient) UpdateCurrency(ctx context.Context, code string, updateD
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
 		return nil, err
@@ -598,7 +671,10 @@ func (c *EmporixClient) DeleteCurrency(ctx context.Context, code string) error {
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
 		return err
@@ -763,7 +839,10 @@ func (c *EmporixClient) CreateTenantConfiguration(ctx context.Context, config *T
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
 		return nil, err
@@ -796,7 +875,10 @@ func (c *EmporixClient) GetTenantConfiguration(ctx context.Context, key string) 
 		return nil, &NotFoundError{}
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -820,7 +902,10 @@ func (c *EmporixClient) UpdateTenantConfiguration(ctx context.Context, key strin
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -844,7 +929,10 @@ func (c *EmporixClient) DeleteTenantConfiguration(ctx context.Context, key strin
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
 		return err
@@ -868,7 +956,10 @@ func (c *EmporixClient) CreateShippingZone(ctx context.Context, site string, zon
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	// Accept both 201 Created and 200 OK for successful creates
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
@@ -914,7 +1005,10 @@ func (c *EmporixClient) GetShippingZone(ctx context.Context, site, zoneID string
 		return nil, &NotFoundError{}
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -943,7 +1037,10 @@ func (c *EmporixClient) ListShippingZones(ctx context.Context, site string) ([]S
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -972,7 +1069,10 @@ func (c *EmporixClient) UpdateShippingZone(ctx context.Context, site, zoneID str
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	// Accept both 200 OK and 204 No Content for successful updates
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
@@ -1014,7 +1114,148 @@ func (c *EmporixClient) DeleteShippingZone(ctx context.Context, site, zoneID str
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// CreateSchema creates a new schema
+func (c *EmporixClient) CreateSchema(ctx context.Context, schema *SchemaCreate) (*Schema, error) {
+	path := fmt.Sprintf("/schema/%s/schemas", strings.ToLower(c.Tenant))
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "POST", path, schema, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	// API returns IdResponse on creation
+	var idResp IdResponse
+	if err := json.Unmarshal(bodyBytes, &idResp); err != nil {
+		return nil, fmt.Errorf("error decoding schema creation response: %w", err)
+	}
+
+	tflog.Debug(ctx, "Schema created, fetching complete state via GET")
+
+	// Fetch complete schema data
+	return c.GetSchema(ctx, idResp.ID)
+}
+
+// GetSchema retrieves a schema by ID
+func (c *EmporixClient) GetSchema(ctx context.Context, id string) (*Schema, error) {
+	path := fmt.Sprintf("/schema/%s/schemas/%s", strings.ToLower(c.Tenant), id)
+
+	// Always use Accept-Language: * to retrieve all translations
+	headers := map[string]string{
+		"Accept-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var schema Schema
+	if err := json.Unmarshal(bodyBytes, &schema); err != nil {
+		return nil, fmt.Errorf("error decoding schema: %w", err)
+	}
+
+	return &schema, nil
+}
+
+// UpdateSchema updates a schema
+func (c *EmporixClient) UpdateSchema(ctx context.Context, id string, updateData *SchemaUpdate) (*Schema, error) {
+	// First, get current schema to retrieve metadata.version (required for PUT)
+	schema, err := c.GetSchema(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("error getting schema before update: %w", err)
+	}
+
+	// Add metadata.version to update data (required by API)
+	if schema.Metadata != nil && schema.Metadata.Version > 0 {
+		if updateData.Metadata == nil {
+			updateData.Metadata = &SchemaMetadataUpdate{}
+		}
+		updateData.Metadata.Version = schema.Metadata.Version
+	}
+
+	path := fmt.Sprintf("/schema/%s/schemas/%s", strings.ToLower(c.Tenant), id)
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// PUT returns 204 No Content, so fetch current state via GET
+	tflog.Debug(ctx, "Update succeeded, fetching current state via GET")
+
+	return c.GetSchema(ctx, id)
+}
+
+// DeleteSchema deletes a schema
+func (c *EmporixClient) DeleteSchema(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/schema/%s/schemas/%s", strings.ToLower(c.Tenant), id)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
 		return err
@@ -1034,7 +1275,10 @@ func (c *EmporixClient) CreateDeliveryTime(ctx context.Context, deliveryTime *De
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	// Accept both 201 Created and 200 OK
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
@@ -1072,7 +1316,10 @@ func (c *EmporixClient) GetDeliveryTime(ctx context.Context, id string) (*Delive
 		return nil, &NotFoundError{}
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -1096,7 +1343,10 @@ func (c *EmporixClient) UpdateDeliveryTime(ctx context.Context, id string, deliv
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	// Accept both 200 OK and 204 No Content
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
@@ -1130,7 +1380,10 @@ func (c *EmporixClient) DeleteDeliveryTime(ctx context.Context, id string) error
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK); err != nil {
 		return err
@@ -1155,7 +1408,10 @@ func (c *EmporixClient) CreateShippingMethod(ctx context.Context, site, zoneID s
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
 		return nil, err
@@ -1188,7 +1444,10 @@ func (c *EmporixClient) GetShippingMethod(ctx context.Context, site, zoneID, id 
 		return nil, &NotFoundError{}
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -1217,7 +1476,10 @@ func (c *EmporixClient) UpdateShippingMethod(ctx context.Context, site, zoneID, 
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
 		return nil, err
@@ -1255,7 +1517,10 @@ func (c *EmporixClient) DeleteShippingMethod(ctx context.Context, site, zoneID, 
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusOK); err != nil {
 		return err
