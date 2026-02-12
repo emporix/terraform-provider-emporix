@@ -683,6 +683,146 @@ func (c *EmporixClient) DeleteCurrency(ctx context.Context, code string) error {
 	return nil
 }
 
+// CreateTax creates a new tax configuration
+func (c *EmporixClient) CreateTax(ctx context.Context, taxCreate *TaxCreate) (*Tax, error) {
+	path := fmt.Sprintf("/tax/%s/taxes", strings.ToLower(c.Tenant))
+
+	// Always use Content-Language: * to work with map-based localization
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "POST", path, taxCreate, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	// API returns { "locationCode": "string" } on create
+	var createResp struct {
+		LocationCode string `json:"locationCode"`
+	}
+	if err := json.Unmarshal(bodyBytes, &createResp); err != nil {
+		return nil, fmt.Errorf("error decoding tax create response: %w", err)
+	}
+
+	// Fetch the created resource to sync statefile with actual API response
+	// This ensures we capture any server-computed fields and metadata
+	tflog.Debug(ctx, "Tax created, fetching complete state via GET")
+	return c.GetTax(ctx, createResp.LocationCode)
+}
+
+// GetTax retrieves a tax configuration by location code (country code)
+func (c *EmporixClient) GetTax(ctx context.Context, locationCode string) (*Tax, error) {
+	path := fmt.Sprintf("/tax/%s/taxes/%s", strings.ToLower(c.Tenant), locationCode)
+
+	// Always use Accept-Language: * to retrieve all translations
+	headers := map[string]string{
+		"Accept-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var tax Tax
+	if err := json.Unmarshal(bodyBytes, &tax); err != nil {
+		return nil, fmt.Errorf("error decoding tax response: %w", err)
+	}
+
+	return &tax, nil
+}
+
+// UpdateTax updates a tax configuration
+func (c *EmporixClient) UpdateTax(ctx context.Context, locationCode string, updateData *TaxUpdate) (*Tax, error) {
+	// First, get current tax to retrieve metadata.version (required for PUT)
+	tax, err := c.GetTax(ctx, locationCode)
+	if err != nil {
+		return nil, fmt.Errorf("error getting tax before update: %w", err)
+	}
+
+	// Add metadata.version to update data (required by API for optimistic concurrency)
+	if tax.Metadata != nil && tax.Metadata.Version > 0 {
+		if updateData.Metadata == nil {
+			updateData.Metadata = &Metadata{}
+		}
+		updateData.Metadata.Version = tax.Metadata.Version
+	}
+
+	path := fmt.Sprintf("/tax/%s/taxes/%s", strings.ToLower(c.Tenant), locationCode)
+
+	// Always use Content-Language: * to work with map-based localization
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	// PUT returns 204 No Content, so fetch current state via GET
+	tflog.Debug(ctx, "Update succeeded, fetching current state via GET")
+
+	return c.GetTax(ctx, locationCode)
+}
+
+// DeleteTax deletes a tax configuration by location code
+func (c *EmporixClient) DeleteTax(ctx context.Context, locationCode string) error {
+	path := fmt.Sprintf("/tax/%s/taxes/%s", strings.ToLower(c.Tenant), locationCode)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // CreateTenantConfiguration creates a new tenant configuration
 func (c *EmporixClient) CreateTenantConfiguration(ctx context.Context, config *TenantConfigurationCreate) (*TenantConfiguration, error) {
 	path := fmt.Sprintf("/configuration/%s/configurations", strings.ToLower(c.Tenant))
