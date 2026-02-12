@@ -698,7 +698,10 @@ func (c *EmporixClient) CreateTax(ctx context.Context, taxCreate *TaxCreate) (*T
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
 		return nil, err
@@ -737,7 +740,10 @@ func (c *EmporixClient) GetTax(ctx context.Context, locationCode string) (*Tax, 
 		return nil, &NotFoundError{}
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
 		return nil, err
@@ -780,30 +786,19 @@ func (c *EmporixClient) UpdateTax(ctx context.Context, locationCode string, upda
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
 		return nil, err
 	}
 
-	// PUT returned 204 No Content - construct state from request data
-	tflog.Debug(ctx, "Update succeeded (204), constructing state from request data")
+	// PUT returns 204 No Content, so fetch current state via GET
+	tflog.Debug(ctx, "Update succeeded, fetching current state via GET")
 
-	newVersion := 1
-	if updateData.Metadata != nil && updateData.Metadata.Version > 0 {
-		newVersion = updateData.Metadata.Version + 1
-	}
-
-	updatedTax := &Tax{
-		LocationCode: locationCode,
-		Location:     updateData.Location,
-		TaxClasses:   updateData.TaxClasses,
-		Metadata: &Metadata{
-			Version: newVersion,
-		},
-	}
-
-	return updatedTax, nil
+	return c.GetTax(ctx, locationCode)
 }
 
 // DeleteTax deletes a tax configuration by location code
@@ -816,7 +811,10 @@ func (c *EmporixClient) DeleteTax(ctx context.Context, locationCode string) erro
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
 		return err

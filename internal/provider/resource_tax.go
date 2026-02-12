@@ -145,39 +145,9 @@ func (r *TaxResource) Create(ctx context.Context, req resource.CreateRequest, re
 	}
 
 	// Convert to API types
-	taxClasses := make([]TaxClass, len(taxClassModels))
-	for i, tcModel := range taxClassModels {
-		// Convert name map
-		nameMap := make(map[string]string)
-		resp.Diagnostics.Append(tcModel.Name.ElementsAs(ctx, &nameMap, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		taxClass := TaxClass{
-			Code:      tcModel.Code.ValueString(),
-			Name:      nameMap,
-			Rate:      tcModel.Rate.ValueFloat64(),
-			IsDefault: tcModel.IsDefault.ValueBool(),
-		}
-
-		// Optional description
-		if !tcModel.Description.IsNull() {
-			descMap := make(map[string]string)
-			resp.Diagnostics.Append(tcModel.Description.ElementsAs(ctx, &descMap, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			taxClass.Description = descMap
-		}
-
-		// Optional order
-		if !tcModel.Order.IsNull() {
-			order := int(tcModel.Order.ValueInt64())
-			taxClass.Order = &order
-		}
-
-		taxClasses[i] = taxClass
+	taxClasses := taxClassModelsToAPI(ctx, taxClassModels, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Create API request
@@ -251,39 +221,9 @@ func (r *TaxResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	// Convert to API types
-	taxClasses := make([]TaxClass, len(taxClassModels))
-	for i, tcModel := range taxClassModels {
-		// Convert name map
-		nameMap := make(map[string]string)
-		resp.Diagnostics.Append(tcModel.Name.ElementsAs(ctx, &nameMap, false)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		taxClass := TaxClass{
-			Code:      tcModel.Code.ValueString(),
-			Name:      nameMap,
-			Rate:      tcModel.Rate.ValueFloat64(),
-			IsDefault: tcModel.IsDefault.ValueBool(),
-		}
-
-		// Optional description
-		if !tcModel.Description.IsNull() {
-			descMap := make(map[string]string)
-			resp.Diagnostics.Append(tcModel.Description.ElementsAs(ctx, &descMap, false)...)
-			if resp.Diagnostics.HasError() {
-				return
-			}
-			taxClass.Description = descMap
-		}
-
-		// Optional order
-		if !tcModel.Order.IsNull() {
-			order := int(tcModel.Order.ValueInt64())
-			taxClass.Order = &order
-		}
-
-		taxClasses[i] = taxClass
+	taxClasses := taxClassModelsToAPI(ctx, taxClassModels, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	// Prepare update payload
@@ -337,10 +277,54 @@ func (r *TaxResource) ImportState(ctx context.Context, req resource.ImportStateR
 	resource.ImportStatePassthroughID(ctx, path.Root("country_code"), req, resp)
 }
 
+// taxClassModelsToAPI converts a list of TaxClassModel (Terraform state) to API TaxClass structs.
+func taxClassModelsToAPI(ctx context.Context, taxClassModels []TaxClassModel, diags *diag.Diagnostics) []TaxClass {
+	taxClasses := make([]TaxClass, len(taxClassModels))
+	for i, tcModel := range taxClassModels {
+		// Convert name map
+		nameMap := make(map[string]string)
+		diags.Append(tcModel.Name.ElementsAs(ctx, &nameMap, false)...)
+		if diags.HasError() {
+			return nil
+		}
+
+		taxClass := TaxClass{
+			Code:      tcModel.Code.ValueString(),
+			Name:      nameMap,
+			Rate:      tcModel.Rate.ValueFloat64(),
+			IsDefault: tcModel.IsDefault.ValueBool(),
+		}
+
+		// Optional description
+		if !tcModel.Description.IsNull() {
+			descMap := make(map[string]string)
+			diags.Append(tcModel.Description.ElementsAs(ctx, &descMap, false)...)
+			if diags.HasError() {
+				return nil
+			}
+			taxClass.Description = descMap
+		}
+
+		// Optional order
+		if !tcModel.Order.IsNull() {
+			order := int(tcModel.Order.ValueInt64())
+			taxClass.Order = &order
+		}
+
+		taxClasses[i] = taxClass
+	}
+	return taxClasses
+}
+
 // mapTaxToModel converts a Tax API response to a TaxResourceModel
 func mapTaxToModel(ctx context.Context, tax *Tax, data *TaxResourceModel, diags *diag.Diagnostics) {
-	// Set country code
-	data.CountryCode = types.StringValue(tax.Location.CountryCode)
+	// Set country code (guard against nil Location from API)
+	if tax.Location != nil {
+		data.CountryCode = types.StringValue(tax.Location.CountryCode)
+	} else {
+		// Fall back to locationCode which is always present
+		data.CountryCode = types.StringValue(tax.LocationCode)
+	}
 
 	// Convert tax classes
 	taxClassModels := make([]TaxClassModel, len(tax.TaxClasses))
@@ -351,7 +335,7 @@ func mapTaxToModel(ctx context.Context, tax *Tax, data *TaxResourceModel, diags 
 			IsDefault: types.BoolValue(tc.IsDefault),
 		}
 
-		// Convert name (can be map[string]interface{} from JSON unmarshal or map[string]string from struct construction)
+		// Convert name (can be map[string]interface{} from JSON unmarshal, map[string]string from struct construction, or a plain string)
 		var nameStrMap map[string]string
 		switch v := tc.Name.(type) {
 		case map[string]interface{}:
@@ -363,14 +347,24 @@ func mapTaxToModel(ctx context.Context, tax *Tax, data *TaxResourceModel, diags 
 			}
 		case map[string]string:
 			nameStrMap = v
+		case string:
+			// API returned a plain string (single-language mode); store under "en" as default
+			nameStrMap = map[string]string{"en": v}
+		default:
+			tflog.Warn(ctx, "Unexpected type for tax class name, leaving as empty map", map[string]interface{}{
+				"code": tc.Code,
+				"type": fmt.Sprintf("%T", tc.Name),
+			})
 		}
 		if nameStrMap != nil {
 			nameMapValue, d := types.MapValueFrom(ctx, types.StringType, nameStrMap)
 			diags.Append(d...)
 			model.Name = nameMapValue
+		} else {
+			model.Name = types.MapValueMust(types.StringType, map[string]attr.Value{})
 		}
 
-		// Convert description if present (can be map[string]interface{} from JSON or map[string]string from struct)
+		// Convert description if present (can be map[string]interface{} from JSON, map[string]string from struct, or a plain string)
 		if tc.Description != nil {
 			var descStrMap map[string]string
 			switch v := tc.Description.(type) {
@@ -383,11 +377,21 @@ func mapTaxToModel(ctx context.Context, tax *Tax, data *TaxResourceModel, diags 
 				}
 			case map[string]string:
 				descStrMap = v
+			case string:
+				// API returned a plain string (single-language mode); store under "en" as default
+				descStrMap = map[string]string{"en": v}
+			default:
+				tflog.Warn(ctx, "Unexpected type for tax class description, leaving as null", map[string]interface{}{
+					"code": tc.Code,
+					"type": fmt.Sprintf("%T", tc.Description),
+				})
 			}
 			if descStrMap != nil {
 				descMapValue, d := types.MapValueFrom(ctx, types.StringType, descStrMap)
 				diags.Append(d...)
 				model.Description = descMapValue
+			} else {
+				model.Description = types.MapNull(types.StringType)
 			}
 		} else {
 			model.Description = types.MapNull(types.StringType)
