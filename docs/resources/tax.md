@@ -30,7 +30,7 @@ resource "emporix_tax" "poland" {
         en = "Standard VAT Rate"
         pl = "Stawka podstawowa VAT"
       }
-      rate       = 0.23
+      rate       = 23
       is_default = true
       order      = 1
       description = {
@@ -43,7 +43,7 @@ resource "emporix_tax" "poland" {
         en = "Reduced VAT Rate"
         pl = "Stawka obniżona VAT"
       }
-      rate  = 0.08
+      rate  = 8
       order = 2
     }
   ]
@@ -63,7 +63,7 @@ resource "emporix_tax" "germany" {
         en = "Standard VAT"
         de = "Regelsteuersatz"
       }
-      rate       = 0.19
+      rate       = 19
       is_default = true
       order      = 1
     },
@@ -73,7 +73,7 @@ resource "emporix_tax" "germany" {
         en = "Reduced VAT"
         de = "Ermäßigter Steuersatz"
       }
-      rate  = 0.07
+      rate  = 7
       order = 2
     },
     {
@@ -82,7 +82,7 @@ resource "emporix_tax" "germany" {
         en = "Zero Rate"
         de = "Nullsteuersatz"
       }
-      rate  = 0.0
+      rate  = 0
       order = 3
     }
   ]
@@ -102,7 +102,7 @@ resource "emporix_tax" "us" {
       name = {
         en = "Standard Sales Tax"
       }
-      rate       = 0.07
+      rate       = 7
       is_default = true
       order      = 1
     }
@@ -119,7 +119,7 @@ resource "emporix_tax" "uk" {
       name = {
         en = "Standard VAT"
       }
-      rate       = 0.20
+      rate       = 20
       is_default = true
       order      = 1
     },
@@ -128,7 +128,7 @@ resource "emporix_tax" "uk" {
       name = {
         en = "Reduced VAT"
       }
-      rate  = 0.05
+      rate  = 5
       order = 2
     },
     {
@@ -136,7 +136,7 @@ resource "emporix_tax" "uk" {
       name = {
         en = "Zero-rated"
       }
-      rate  = 0.0
+      rate  = 0
       order = 3
     }
   ]
@@ -153,7 +153,7 @@ resource "emporix_tax" "france" {
         en = "Standard VAT"
         fr = "TVA normale"
       }
-      rate       = 0.20
+      rate       = 20
       is_default = true
       order      = 1
     },
@@ -163,7 +163,7 @@ resource "emporix_tax" "france" {
         en = "Intermediate Rate"
         fr = "Taux intermédiaire"
       }
-      rate  = 0.10
+      rate  = 10
       order = 2
     },
     {
@@ -172,7 +172,7 @@ resource "emporix_tax" "france" {
         en = "Reduced Rate"
         fr = "Taux réduit"
       }
-      rate  = 0.055
+      rate  = 5.5
       order = 3
     }
   ]
@@ -184,11 +184,11 @@ resource "emporix_tax" "france" {
 ```terraform
 locals {
   eu_countries = {
-    DE = { standard = 0.19, reduced = 0.07 }
-    FR = { standard = 0.20, reduced = 0.055 }
-    IT = { standard = 0.22, reduced = 0.10 }
-    ES = { standard = 0.21, reduced = 0.10 }
-    NL = { standard = 0.21, reduced = 0.09 }
+    DE = { standard = 19, reduced = 7 }
+    FR = { standard = 20, reduced = 5.5 }
+    IT = { standard = 22, reduced = 10 }
+    ES = { standard = 21, reduced = 10 }
+    NL = { standard = 21, reduced = 9 }
   }
 }
 
@@ -244,7 +244,7 @@ Required nested block list. Each tax class defines a rate category.
 
 - `code` (String) Unique code for this tax class (e.g., 'STANDARD', 'REDUCED', 'ZERO').
 - `name` (Map of String) Tax class name as a map of language codes to translated names. Example: {en = "Standard Rate", de = "Normalsteuersatz"}. At least one language is required.
-- `rate` (Number) Tax rate as a decimal. Examples: 0.19 for 19%, 0.07 for 7%, 0.0 for 0%.
+- `rate` (Number) Tax rate, expressed as a number. For example, if the tax rate is 23%, this field should be set to 23.
 
 **Optional:**
 
@@ -291,7 +291,7 @@ The list of tax classes with their configurations. You can access individual tax
 ```terraform
 output "standard_rate" {
   value = emporix_tax.poland.tax_classes[0].rate
-  # Output: 0.23
+  # Output: 23
 }
 
 output "standard_name" {
@@ -305,6 +305,6 @@ You can also iterate over tax classes:
 ```terraform
 output "all_rates" {
   value = [for tc in emporix_tax.poland.tax_classes : tc.rate]
-  # Output: [0.23, 0.08]
+  # Output: [23, 8]
 }
 ```

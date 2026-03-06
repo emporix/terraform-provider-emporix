@@ -57,7 +57,7 @@ resource "emporix_tax" "poland" {
         en = "Standard VAT Rate"
         pl = "Stawka podstawowa VAT"
       }
-      rate       = 0.23
+      rate       = 23 #percent
       is_default = true
       order      = 1
       description = {
@@ -70,7 +70,7 @@ resource "emporix_tax" "poland" {
         en = "Reduced VAT Rate"
         pl = "Stawka obniżona VAT"
       }
-      rate  = 0.08
+      rate  = 8 #percent
       order = 2
     }
   ]
@@ -87,7 +87,7 @@ resource "emporix_tax" "germany" {
         en = "Standard VAT"
         de = "Regelsteuersatz"
       }
-      rate       = 0.19
+      rate       = 19 #percent
       is_default = true
       order      = 1
     },
@@ -97,7 +97,7 @@ resource "emporix_tax" "germany" {
         en = "Reduced VAT"
         de = "Ermäßigter Steuersatz"
       }
-      rate  = 0.07
+      rate  = 7 #percent
       order = 2
     },
     {
@@ -106,7 +106,7 @@ resource "emporix_tax" "germany" {
         en = "Zero Rate"
         de = "Nullsteuersatz"
       }
-      rate  = 0.0
+      rate  = 0 #percent
       order = 3
     }
   ]
@@ -122,7 +122,7 @@ resource "emporix_tax" "us" {
       name = {
         en = "Standard Sales Tax"
       }
-      rate       = 0.07
+      rate       = 7 #percent
       is_default = true
       order      = 1
     }
@@ -139,7 +139,7 @@ resource "emporix_tax" "uk" {
       name = {
         en = "Standard VAT"
       }
-      rate       = 0.20
+      rate       = 20 #percent
       is_default = true
       order      = 1
       description = {
@@ -151,7 +151,7 @@ resource "emporix_tax" "uk" {
       name = {
         en = "Reduced VAT"
       }
-      rate  = 0.05
+      rate  = 5 #percent
       order = 2
       description = {
         en = "Reduced 5% VAT for specific goods"
@@ -162,7 +162,7 @@ resource "emporix_tax" "uk" {
       name = {
         en = "Zero-rated"
       }
-      rate  = 0.0
+      rate  = 0 #percent
       order = 3
       description = {
         en = "Zero-rated goods and services"
@@ -182,7 +182,7 @@ resource "emporix_tax" "france" {
         en = "Standard VAT"
         fr = "TVA normale"
       }
-      rate       = 0.20
+      rate       = 20 #percent
       is_default = true
       order      = 1
     },
@@ -192,7 +192,7 @@ resource "emporix_tax" "france" {
         en = "Intermediate Rate"
         fr = "Taux intermédiaire"
       }
-      rate  = 0.10
+      rate  = 10 #percent
       order = 2
     },
     {
@@ -201,7 +201,7 @@ resource "emporix_tax" "france" {
         en = "Reduced Rate"
         fr = "Taux réduit"
       }
-      rate  = 0.055
+      rate  = 5.5 #percent
       order = 3
     }
   ]
@@ -210,11 +210,11 @@ resource "emporix_tax" "france" {
 # Example 6: Dynamic configuration for multiple EU countries
 locals {
   eu_countries = {
-    IT = { name = "Italy", standard = 0.22, reduced = 0.10 }
-    ES = { name = "Spain", standard = 0.21, reduced = 0.10 }
-    NL = { name = "Netherlands", standard = 0.21, reduced = 0.09 }
-    BE = { name = "Belgium", standard = 0.21, reduced = 0.06 }
-    AT = { name = "Austria", standard = 0.20, reduced = 0.10 }
+    IT = { name = "Italy", standard = 22, reduced = 10 }
+    ES = { name = "Spain", standard = 21, reduced = 10 }
+    NL = { name = "Netherlands", standard = 21, reduced = 9 }
+    BE = { name = "Belgium", standard = 21, reduced = 6 }
+    AT = { name = "Austria", standard = 20, reduced = 10 }
   }
 }
 
