@@ -302,7 +302,7 @@ func mapSchemaToModel(ctx context.Context, schema *Schema, data *SchemaResourceM
 	data.ID = types.StringValue(schema.ID)
 
 	// Convert name map from API to Terraform map
-	if schema.Name != nil && len(schema.Name) > 0 {
+	if len(schema.Name) > 0 {
 		nameMapValue, d := types.MapValueFrom(ctx, types.StringType, schema.Name)
 		diags.Append(d...)
 		data.Name = nameMapValue
@@ -442,6 +442,7 @@ func convertAttributeToObject(ctx context.Context, schemaAttr SchemaAttribute) (
 		"type":      types.StringType,
 		"localized": types.BoolType,
 		"values":    types.ListType{ElemType: types.ObjectType{AttrTypes: valueAttrTypes}},
+		"attributes": types.DynamicType, // for ARRAY of OBJECT elements
 	}
 	var arrayTypeObj types.Object
 	if schemaAttr.ArrayType != nil {
@@ -460,10 +461,29 @@ func convertAttributeToObject(ctx context.Context, schemaAttr SchemaAttribute) (
 			arrayValuesList = types.ListNull(types.ObjectType{AttrTypes: valueAttrTypes})
 		}
 
+		// Convert array_type.attributes (recursive!)
+		var arrayNestedAttrsTuple types.Tuple
+		if len(schemaAttr.ArrayType.Attributes) > 0 {
+			arrayNestedAttrValues := make([]attr.Value, len(schemaAttr.ArrayType.Attributes))
+			arrayNestedAttrTypes := make([]attr.Type, len(schemaAttr.ArrayType.Attributes))
+			for i, nestedAttr := range schemaAttr.ArrayType.Attributes {
+				nestedObj, d := convertAttributeToObject(ctx, nestedAttr)
+				diags.Append(d...)
+				arrayNestedAttrValues[i] = nestedObj
+				arrayNestedAttrTypes[i] = nestedObj.Type(ctx)
+			}
+			arrayNestedAttrsTuple, d = types.TupleValue(arrayNestedAttrTypes, arrayNestedAttrValues)
+			diags.Append(d...)
+		} else {
+			arrayNestedAttrsTuple, d = types.TupleValue([]attr.Type{}, []attr.Value{})
+			diags.Append(d...)
+		}
+
 		arrayTypeAttrValues := map[string]attr.Value{
-			"type":      types.StringValue(schemaAttr.ArrayType.Type),
-			"localized": types.BoolValue(schemaAttr.ArrayType.Localized),
-			"values":    arrayValuesList,
+			"type":       types.StringValue(schemaAttr.ArrayType.Type),
+			"localized":  types.BoolValue(schemaAttr.ArrayType.Localized),
+			"values":     arrayValuesList,
+			"attributes": types.DynamicValue(arrayNestedAttrsTuple),
 		}
 		arrayTypeObj, d = types.ObjectValue(arrayTypeAttrTypes, arrayTypeAttrValues)
 		diags.Append(d...)
@@ -673,6 +693,33 @@ func convertObjectToAttribute(ctx context.Context, val attr.Value) (SchemaAttrib
 					}
 				}
 			}
+
+			// Extract array_type.attributes (recursive!) for ARRAY of OBJECT
+			if attrsVal, ok := arrayAttrs["attributes"]; ok && !attrsVal.IsNull() {
+				var nestedList []attr.Value
+				switch v := attrsVal.(type) {
+				case basetypes.ListValue:
+					nestedList = v.Elements()
+				case basetypes.TupleValue:
+					nestedList = v.Elements()
+				case basetypes.DynamicValue:
+					// attributes is declared as DynamicType; it may wrap list/tuple
+					switch uv := v.UnderlyingValue().(type) {
+					case basetypes.ListValue:
+						nestedList = uv.Elements()
+					case basetypes.TupleValue:
+						nestedList = uv.Elements()
+					}
+				}
+				if len(nestedList) > 0 {
+					result.ArrayType.Attributes = make([]SchemaAttribute, len(nestedList))
+					for i, nestedVal := range nestedList {
+						nestedAttr, d := convertObjectToAttribute(ctx, nestedVal)
+						diags.Append(d...)
+						result.ArrayType.Attributes[i] = nestedAttr
+					}
+				}
+			}
 		}
 	}
 
@@ -706,6 +753,7 @@ func getAttributeObjectType() map[string]attr.Type {
 			"values": types.ListType{ElemType: types.ObjectType{AttrTypes: map[string]attr.Type{
 				"value": types.StringType,
 			}}},
+			"attributes": types.DynamicType, // for ARRAY of OBJECT elements
 		}},
 	}
 }

@@ -591,6 +591,7 @@ Optional:
 
 - `localized` (Boolean) Whether array elements are localized.
 - `values` (Attributes List) List of allowed values for `ENUM` array elements. (see [below for nested schema](#nestedatt--attributes--array_type--values))
+- `attributes` (Dynamic List) Nested attributes for `OBJECT` array elements. Required when `type = "OBJECT"`. Each nested attribute has the same structure as top-level `attributes`.
 
 <a id="nestedatt--attributes--array_type--values"></a>
 #### Nested Schema for `attributes.array_type.values`
