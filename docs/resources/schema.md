@@ -429,6 +429,71 @@ resource "emporix_schema" "product_tags" {
 }
 ```
 
+### Schema with ARRAY of OBJECT Items
+
+When `type = "ARRAY"` and `array_type.type = "OBJECT"`, you must provide non-empty `array_type.attributes` that describe the object structure.
+
+```terraform
+resource "emporix_schema" "product_related_items" {
+  id = "product-related-items-schema"
+  name = {
+    en = "Product Related Items Schema"
+  }
+  types = ["PRODUCT"]
+
+  attributes = [
+    {
+      key = "relatedItems"
+      name = {
+        en = "Related Items"
+      }
+      description = {
+        en = "List of related items (each entry is an object)."
+      }
+      type = "ARRAY"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+      array_type = {
+        type      = "OBJECT"
+        localized = false
+        attributes = [
+          {
+            key = "sku"
+            name = {
+              en = "SKU"
+            }
+            type = "TEXT"
+            metadata = {
+              read_only  = false
+              localized  = false
+              required   = true
+              nullable   = false
+            }
+          },
+          {
+            key = "quantity"
+            name = {
+              en = "Quantity"
+            }
+            type = "NUMBER"
+            metadata = {
+              read_only  = false
+              localized  = false
+              required   = false
+              nullable   = true
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
 ### Schema for Multiple Entity Types
 
 ```terraform
