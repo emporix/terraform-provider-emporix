@@ -206,6 +206,10 @@ func TestAccSchemaResource_arrayOfObjects(t *testing.T) {
 					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.type", "ARRAY"),
 					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.array_type.type", "OBJECT"),
 					// array_type.attributes[*]
+					//
+					// This verifies the Terraform->API conversion path is correct because:
+					// - Emporix API rejects arrayType.type=OBJECT with missing/empty arrayType.attributes
+					// - if the provider dropped these fields, Create would fail and this step wouldn't pass
 					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.array_type.attributes.0.key", "sku"),
 					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.array_type.attributes.0.type", "TEXT"),
 					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.array_type.attributes.1.key", "quantity"),

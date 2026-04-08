@@ -606,7 +606,7 @@ Optional:
 
 - `description` (Map of String) Attribute description as a map of language code to description.
 - `values` (Attributes List) List of allowed values for `ENUM` or `REFERENCE` types. (see [below for nested schema](#nestedatt--attributes--values))
-- `attributes` (Dynamic List) Nested attributes for `OBJECT` type. Supports unlimited nesting depth. (see [below for nested schema](#nestedatt--attributes--attributes))
+- `attributes` (Dynamic) Nested attributes for `OBJECT` type. Supports unlimited nesting depth. (see [below for nested schema](#nestedatt--attributes--attributes))
 - `array_type` (Attributes) Array type configuration for `ARRAY` attributes. (see [below for nested schema](#nestedatt--attributes--array_type))
 
 <a id="nestedatt--attributes--metadata"></a>
@@ -656,7 +656,7 @@ Optional:
 
 - `localized` (Boolean) Whether array elements are localized.
 - `values` (Attributes List) List of allowed values for `ENUM` array elements. (see [below for nested schema](#nestedatt--attributes--array_type--values))
-- `attributes` (Dynamic List) Nested attributes for `OBJECT` array elements. Required when `type = "OBJECT"`. Each nested attribute has the same structure as top-level `attributes`.
+- `attributes` (Dynamic) Nested attributes for `OBJECT` array elements. Required when `type = "OBJECT"`. Each nested attribute has the same structure as top-level `attributes`.
 
 <a id="nestedatt--attributes--array_type--values"></a>
 #### Nested Schema for `attributes.array_type.values`
