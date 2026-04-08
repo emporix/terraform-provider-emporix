@@ -78,7 +78,7 @@ func (r *SchemaResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				MarkdownDescription: "List of schema attributes defining the structure. Supports unlimited nesting of OBJECT types. " +
 					"Each attribute is an object with: key (string), name (map), type (string: TEXT, NUMBER, DECIMAL, BOOLEAN, DATE, TIME, DATE_TIME, ENUM, ARRAY, OBJECT, REFERENCE), " +
 					"metadata (object with read_only, localized, required, nullable booleans), and optional: description (map), values (list for ENUM/REFERENCE), " +
-					"attributes (list for OBJECT type - can be nested infinitely), array_type (object for ARRAY type with type, localized, values).",
+					"attributes (list for OBJECT type - can be nested infinitely), array_type (object for ARRAY type with type, localized, values, attributes for OBJECT elements).",
 				Required: true,
 			},
 		},
@@ -302,7 +302,7 @@ func mapSchemaToModel(ctx context.Context, schema *Schema, data *SchemaResourceM
 	data.ID = types.StringValue(schema.ID)
 
 	// Convert name map from API to Terraform map
-	if schema.Name != nil && len(schema.Name) > 0 {
+	if len(schema.Name) > 0 {
 		nameMapValue, d := types.MapValueFrom(ctx, types.StringType, schema.Name)
 		diags.Append(d...)
 		data.Name = nameMapValue
@@ -439,9 +439,10 @@ func convertAttributeToObject(ctx context.Context, schemaAttr SchemaAttribute) (
 
 	// Convert array_type
 	arrayTypeAttrTypes := map[string]attr.Type{
-		"type":      types.StringType,
-		"localized": types.BoolType,
-		"values":    types.ListType{ElemType: types.ObjectType{AttrTypes: valueAttrTypes}},
+		"type":       types.StringType,
+		"localized":  types.BoolType,
+		"values":     types.ListType{ElemType: types.ObjectType{AttrTypes: valueAttrTypes}},
+		"attributes": types.DynamicType, // Dynamic for tuple/list representation
 	}
 	var arrayTypeObj types.Object
 	if schemaAttr.ArrayType != nil {
@@ -460,10 +461,30 @@ func convertAttributeToObject(ctx context.Context, schemaAttr SchemaAttribute) (
 			arrayValuesList = types.ListNull(types.ObjectType{AttrTypes: valueAttrTypes})
 		}
 
+		// Convert array_type.attributes (recursive!)
+		//
+		// Important: only set this when array_type.type == "OBJECT", otherwise we'd
+		// always store an empty tuple and risk plan diffs for arrays of primitives.
+		arrayTypeAttributesDynamic := types.DynamicNull()
+		if schemaAttr.ArrayType.Type == "OBJECT" && len(schemaAttr.ArrayType.Attributes) > 0 {
+			arrayNestedAttrValues := make([]attr.Value, len(schemaAttr.ArrayType.Attributes))
+			arrayNestedAttrTypes := make([]attr.Type, len(schemaAttr.ArrayType.Attributes))
+			for i, nestedAttr := range schemaAttr.ArrayType.Attributes {
+				nestedObj, d := convertAttributeToObject(ctx, nestedAttr)
+				diags.Append(d...)
+				arrayNestedAttrValues[i] = nestedObj
+				arrayNestedAttrTypes[i] = nestedObj.Type(ctx)
+			}
+			arrayNestedAttrsTuple, d := types.TupleValue(arrayNestedAttrTypes, arrayNestedAttrValues)
+			diags.Append(d...)
+			arrayTypeAttributesDynamic = types.DynamicValue(arrayNestedAttrsTuple)
+		}
+
 		arrayTypeAttrValues := map[string]attr.Value{
-			"type":      types.StringValue(schemaAttr.ArrayType.Type),
-			"localized": types.BoolValue(schemaAttr.ArrayType.Localized),
-			"values":    arrayValuesList,
+			"type":       types.StringValue(schemaAttr.ArrayType.Type),
+			"localized":  types.BoolValue(schemaAttr.ArrayType.Localized),
+			"values":     arrayValuesList,
+			"attributes": arrayTypeAttributesDynamic,
 		}
 		arrayTypeObj, d = types.ObjectValue(arrayTypeAttrTypes, arrayTypeAttrValues)
 		diags.Append(d...)
@@ -673,6 +694,35 @@ func convertObjectToAttribute(ctx context.Context, val attr.Value) (SchemaAttrib
 					}
 				}
 			}
+
+			// Extract array_type.attributes (recursive!) for ARRAY of OBJECT
+			if result.ArrayType.Type == "OBJECT" {
+				if attrsVal, ok := arrayAttrs["attributes"]; ok && !attrsVal.IsNull() {
+					var nestedList []attr.Value
+					switch v := attrsVal.(type) {
+					case basetypes.ListValue:
+						nestedList = v.Elements()
+					case basetypes.TupleValue:
+						nestedList = v.Elements()
+					case basetypes.DynamicValue:
+						// attributes is declared as DynamicType; it may wrap list/tuple
+						switch uv := v.UnderlyingValue().(type) {
+						case basetypes.ListValue:
+							nestedList = uv.Elements()
+						case basetypes.TupleValue:
+							nestedList = uv.Elements()
+						}
+					}
+					if len(nestedList) > 0 {
+						result.ArrayType.Attributes = make([]SchemaAttribute, len(nestedList))
+						for i, nestedVal := range nestedList {
+							nestedAttr, d := convertObjectToAttribute(ctx, nestedVal)
+							diags.Append(d...)
+							result.ArrayType.Attributes[i] = nestedAttr
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -706,6 +756,7 @@ func getAttributeObjectType() map[string]attr.Type {
 			"values": types.ListType{ElemType: types.ObjectType{AttrTypes: map[string]attr.Type{
 				"value": types.StringType,
 			}}},
+			"attributes": types.DynamicType, // Dynamic to allow tuple/list representation
 		}},
 	}
 }

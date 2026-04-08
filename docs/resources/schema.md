@@ -429,6 +429,71 @@ resource "emporix_schema" "product_tags" {
 }
 ```
 
+### Schema with ARRAY of OBJECT Items
+
+When `type = "ARRAY"` and `array_type.type = "OBJECT"`, you must provide non-empty `array_type.attributes` that describe the object structure.
+
+```terraform
+resource "emporix_schema" "product_related_items" {
+  id = "product-related-items-schema"
+  name = {
+    en = "Product Related Items Schema"
+  }
+  types = ["PRODUCT"]
+
+  attributes = [
+    {
+      key = "relatedItems"
+      name = {
+        en = "Related Items"
+      }
+      description = {
+        en = "List of related items (each entry is an object)."
+      }
+      type = "ARRAY"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+      array_type = {
+        type      = "OBJECT"
+        localized = false
+        attributes = [
+          {
+            key = "sku"
+            name = {
+              en = "SKU"
+            }
+            type = "TEXT"
+            metadata = {
+              read_only  = false
+              localized  = false
+              required   = true
+              nullable   = false
+            }
+          },
+          {
+            key = "quantity"
+            name = {
+              en = "Quantity"
+            }
+            type = "NUMBER"
+            metadata = {
+              read_only  = false
+              localized  = false
+              required   = false
+              nullable   = true
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
 ### Schema for Multiple Entity Types
 
 ```terraform
@@ -541,7 +606,7 @@ Optional:
 
 - `description` (Map of String) Attribute description as a map of language code to description.
 - `values` (Attributes List) List of allowed values for `ENUM` or `REFERENCE` types. (see [below for nested schema](#nestedatt--attributes--values))
-- `attributes` (Dynamic List) Nested attributes for `OBJECT` type. Supports unlimited nesting depth. (see [below for nested schema](#nestedatt--attributes--attributes))
+- `attributes` (Dynamic) Nested attributes for `OBJECT` type. Supports unlimited nesting depth. (see [below for nested schema](#nestedatt--attributes--attributes))
 - `array_type` (Attributes) Array type configuration for `ARRAY` attributes. (see [below for nested schema](#nestedatt--attributes--array_type))
 
 <a id="nestedatt--attributes--metadata"></a>
@@ -591,6 +656,7 @@ Optional:
 
 - `localized` (Boolean) Whether array elements are localized.
 - `values` (Attributes List) List of allowed values for `ENUM` array elements. (see [below for nested schema](#nestedatt--attributes--array_type--values))
+- `attributes` (Dynamic) Nested attributes for `OBJECT` array elements. Required when `type = "OBJECT"`. Each nested attribute has the same structure as top-level `attributes`.
 
 <a id="nestedatt--attributes--array_type--values"></a>
 #### Nested Schema for `attributes.array_type.values`

@@ -191,6 +191,44 @@ func TestAccSchemaResource_nestedObjects(t *testing.T) {
 	})
 }
 
+func TestAccSchemaResource_arrayOfObjects(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSchemaDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSchemaResourceConfigArrayOfObjects("test-schema-array-of-objects-1"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_schema.test", "id", "test-schema-array-of-objects-1"),
+					// ARRAY attribute
+					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.key", "relatedItems"),
+					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.type", "ARRAY"),
+					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.array_type.type", "OBJECT"),
+					// array_type.attributes[*]
+					//
+					// This verifies the Terraform->API conversion path is correct because:
+					// - Emporix API rejects arrayType.type=OBJECT with missing/empty arrayType.attributes
+					// - if the provider dropped these fields, Create would fail and this step wouldn't pass
+					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.array_type.attributes.0.key", "sku"),
+					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.array_type.attributes.0.type", "TEXT"),
+					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.array_type.attributes.1.key", "quantity"),
+					resource.TestCheckResourceAttr("emporix_schema.test", "attributes.0.array_type.attributes.1.type", "NUMBER"),
+				),
+			},
+			// ImportState testing - ignore attributes due to dynamic representation differences
+			{
+				ResourceName:                         "emporix_schema.test",
+				ImportState:                          true,
+				ImportStateId:                        "test-schema-array-of-objects-1",
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "id",
+				ImportStateVerifyIgnore:              []string{"attributes"},
+			},
+		},
+	})
+}
+
 func TestAccSchemaResource_fourLevelNesting(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -678,6 +716,67 @@ resource "emporix_schema" "test" {
           ]
         }
       ]
+    }
+  ]
+}
+`, id)
+}
+
+// testAccSchemaResourceConfigArrayOfObjects generates a schema with ARRAY type whose elements are OBJECTs.
+func testAccSchemaResourceConfigArrayOfObjects(id string) string {
+	return fmt.Sprintf(`
+resource "emporix_schema" "test" {
+  id = %[1]q
+  name = {
+    en = "Array Of Objects Schema"
+  }
+  types = ["PRODUCT"]
+
+  attributes = [
+    {
+      key = "relatedItems"
+      name = {
+        en = "Related Items"
+      }
+      type = "ARRAY"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+      array_type = {
+        type      = "OBJECT"
+        localized = false
+        attributes = [
+          {
+            key = "sku"
+            name = {
+              en = "SKU"
+            }
+            type = "TEXT"
+            metadata = {
+              read_only  = false
+              localized  = false
+              required   = true
+              nullable   = false
+            }
+          },
+          {
+            key = "quantity"
+            name = {
+              en = "Quantity"
+            }
+            type = "NUMBER"
+            metadata = {
+              read_only  = false
+              localized  = false
+              required   = false
+              nullable   = true
+            }
+          }
+        ]
+      }
     }
   ]
 }

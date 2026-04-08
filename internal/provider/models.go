@@ -217,6 +217,8 @@ type SchemaArrayType struct {
 	Type      string                 `json:"type"`
 	Localized bool                   `json:"localized,omitempty"`
 	Values    []SchemaAttributeValue `json:"values,omitempty"`
+	// Attributes is required when Type == "OBJECT"
+	Attributes []SchemaAttribute `json:"attributes,omitempty"`
 }
 
 // SchemaMetadata represents metadata for a schema
