@@ -155,13 +155,22 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 
 	userProviderValue := plan.Provider.ValueString()
 	apiProviderValue := normalizeProvider(plan.Provider.ValueString())
+
+	// Lock per-tenant mutex to prevent race conditions when creating webhooks.
+	// This ensures that when creating multiple webhooks, the operations are serialized
+	// so the API never sees a state with zero active webhooks.
+	mu := getWebhookMutex(r.client.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
 	tflog.Debug(ctx, "Creating webhook configuration", map[string]interface{}{
 		"code":          plan.Code.ValueString(),
 		"user_provider": userProviderValue,
 		"api_provider":  apiProviderValue,
+		"plan_active":   plan.Active.ValueBool(),
 	})
 
-	// Pre-check: List existing webhooks to diagnose 409 conflicts
+	// Pre-check: List existing webhooks to diagnose 409 conflicts and enforce active constraint
 	// This helps identify if the resource exists with a different case or is soft-deleted
 	existingWebhooks, listErr := r.client.ListWebhooks(ctx)
 	if listErr != nil {
@@ -185,10 +194,28 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 				})
 			}
 		}
+
+		// API requires at least one active webhook. If plan wants to create an inactive webhook
+		// and no other active webhooks exist, force active=true.
+		if plan.Active.ValueBool() == false {
+			anyActive := false
+			for _, wh := range existingWebhooks {
+				if wh.Active {
+					anyActive = true
+					break
+				}
+			}
+			if !anyActive {
+				tflog.Info(ctx, "Forcing active=true for new webhook - no other active webhooks exist", map[string]interface{}{
+					"code": plan.Code.ValueString(),
+				})
+				plan.Active = types.BoolValue(true)
+			}
+		}
 	}
 
 	nestedConfig := buildNestedConfigFromModel(plan, userProviderValue)
-	createReq := &ConfigurationGetCreate{
+	createReq := &webhookCreateRequest{
 		Code:          plan.Code.ValueString(),
 		Active:        plan.Active.ValueBool(),
 		Provider:      apiProviderValue,
@@ -291,7 +318,48 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 		"code":          plan.Code.ValueString(),
 		"user_provider": userProviderValue,
 		"api_provider":  apiProviderValue,
+		"plan_active":   plan.Active.ValueBool(),
+		"state_active":  state.Active.ValueBool(),
 	})
+
+	mu := getWebhookMutex(r.client.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
+
+	if !plan.Active.Equal(state.Active) && plan.Active.ValueBool() == false && state.Active.ValueBool() == true {
+		existingWebhooks, listErr := r.client.ListWebhooks(ctx)
+		if listErr != nil {
+			tflog.Warn(ctx, "Failed to list webhooks for pre-check, proceeding with update anyway", map[string]interface{}{
+				"error": listErr.Error(),
+			})
+		} else {
+			otherActiveCount := 0
+			for _, wh := range existingWebhooks {
+				if wh.Active && wh.Code != plan.Code.ValueString() {
+					otherActiveCount++
+				}
+			}
+			if otherActiveCount == 0 {
+				tflog.Info(ctx, "Skipping disable of last active webhook - another webhook must be enabled first", map[string]interface{}{
+					"code": plan.Code.ValueString(),
+				})
+				// Read current state to update version/other computed fields
+				current, err := r.client.GetWebhook(ctx, plan.Code.ValueString())
+				if err != nil {
+					resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read current webhook state, got error: %s", err))
+					return
+				}
+				result := webhookToModel(current)
+				preserveTopLevelFields(&result, &state)
+				result.Provider = types.StringValue(userProviderValue)
+				resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
+				return
+			}
+			tflog.Debug(ctx, "Pre-check passed: other active webhooks exist", map[string]interface{}{
+				"other_active_count": otherActiveCount,
+			})
+		}
+	}
 
 	current, err := r.client.GetWebhook(ctx, plan.Code.ValueString())
 	if err != nil {
@@ -415,14 +483,14 @@ func buildHeaderFieldValueMapFromModel(modelMap map[string]types.String) map[str
 	return result
 }
 
-func buildEventConfigNestedFromModel(models []EventConfigModel) []EventConfigurationNested {
+func buildEventConfigNestedFromModel(models []EventConfigModel) []EventConfig {
 	if len(models) == 0 {
 		return nil
 	}
 
-	events := make([]EventConfigurationNested, 0, len(models))
+	events := make([]EventConfig, 0, len(models))
 	for _, m := range models {
-		event := EventConfigurationNested{
+		event := EventConfig{
 			EventType: m.EventType.ValueString(),
 		}
 		if !m.DestinationUrl.IsNull() {
@@ -439,7 +507,7 @@ func buildEventConfigNestedFromModel(models []EventConfigModel) []EventConfigura
 	return events
 }
 
-func webhookToModel(api *ConfigurationGet) WebhookResourceModel {
+func webhookToModel(api *WebhookConfigGet) WebhookResourceModel {
 	model := WebhookResourceModel{
 		Code:     types.StringValue(api.Code),
 		Active:   types.BoolValue(api.Active),
@@ -487,7 +555,7 @@ func webhookToModel(api *ConfigurationGet) WebhookResourceModel {
 	return model
 }
 
-func buildPatchOperations(current *ConfigurationGet, plan, state WebhookResourceModel) []WebhookConfigPartialUpdates {
+func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResourceModel) []WebhookConfigPartialUpdates {
 	var patches []WebhookConfigPartialUpdates
 
 	provider := strings.ToUpper(strings.ReplaceAll(plan.Provider.ValueString(), "-", "_"))

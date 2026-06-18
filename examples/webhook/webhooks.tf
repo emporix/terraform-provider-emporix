@@ -1,5 +1,6 @@
 # Webhook Subscription Examples
-# API allows only 1 configuration of given type. So you can have 1 http, 1 SVIX and 1 shared SVIX config.
+# API allows only 1 configuration of given type.
+# So you can have 1 http, 1 SVIX and 1 shared SVIX config.
 # To test, uncomment desiresd setup.
 
 terraform {
@@ -65,11 +66,11 @@ variable "emporix_client_secret" {
 # =============================================================================
 # Using Emporix's built-in Svix server. No destination URL or secret key needed.
 
-resource "emporix_webhook" "svix-shared_webhook" {
-  code          = "svixSharedWebhook"
-  provider_type = "svix-shared"
-  active        = false
-}
+# resource "emporix_webhook" "svix-shared_webhook" {
+#   code          = "svixSharedWebhook"
+#   provider_type = "svix-shared"
+#   active        = true
+# }
 
 # =============================================================================
 # Example 3: SVIX Provider (Your Own Svix Server)

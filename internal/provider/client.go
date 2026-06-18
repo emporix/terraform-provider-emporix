@@ -45,6 +45,23 @@ func getShippingZoneMutex(tenant string) *sync.Mutex {
 	return shippingZoneMutexes[tenant]
 }
 
+// Global mutex map for per-tenant webhook operations
+var (
+	webhookMutexes     = make(map[string]*sync.Mutex)
+	webhookMutexesLock sync.Mutex
+)
+
+// getWebhookMutex returns the mutex for a specific tenant's webhook operations
+func getWebhookMutex(tenant string) *sync.Mutex {
+	webhookMutexesLock.Lock()
+	defer webhookMutexesLock.Unlock()
+
+	if _, exists := webhookMutexes[tenant]; !exists {
+		webhookMutexes[tenant] = &sync.Mutex{}
+	}
+	return webhookMutexes[tenant]
+}
+
 // Global mutex map for per-tenant shipping method operations
 var (
 	shippingMethodMutexes     = make(map[string]*sync.Mutex)
@@ -939,7 +956,7 @@ func (c *EmporixClient) DeleteTenantConfiguration(ctx context.Context, key strin
 }
 
 // ListWebhooks retrieves all webhook configurations for the tenant
-func (c *EmporixClient) ListWebhooks(ctx context.Context) ([]ConfigurationGet, error) {
+func (c *EmporixClient) ListWebhooks(ctx context.Context) ([]WebhookConfigGet, error) {
 	path := fmt.Sprintf("/webhook/%s/config", strings.ToLower(c.Tenant))
 
 	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
@@ -949,7 +966,7 @@ func (c *EmporixClient) ListWebhooks(ctx context.Context) ([]ConfigurationGet, e
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return []ConfigurationGet{}, nil
+		return []WebhookConfigGet{}, nil
 	}
 
 	bodyBytes, readErr := io.ReadAll(resp.Body)
@@ -970,7 +987,7 @@ func (c *EmporixClient) ListWebhooks(ctx context.Context) ([]ConfigurationGet, e
 }
 
 // CreateWebhook creates a new webhook configuration
-func (c *EmporixClient) CreateWebhook(ctx context.Context, config *ConfigurationGetCreate) (*ConfigurationGet, error) {
+func (c *EmporixClient) CreateWebhook(ctx context.Context, config *webhookCreateRequest) (*WebhookConfigGet, error) {
 	path := fmt.Sprintf("/webhook/%s/config", strings.ToLower(c.Tenant))
 
 	// POST to API
@@ -1002,12 +1019,12 @@ func (c *EmporixClient) CreateWebhook(ctx context.Context, config *Configuration
 		return nil, err
 	}
 
-	var singleWebhook ConfigurationGet
+	var singleWebhook WebhookConfigGet
 	if err := json.Unmarshal(bodyBytes, &singleWebhook); err == nil {
 		return &singleWebhook, nil
 	}
 
-	var createdWebhooks []ConfigurationGet
+	var createdWebhooks []WebhookConfigGet
 	if err := json.Unmarshal(bodyBytes, &createdWebhooks); err != nil {
 		return nil, fmt.Errorf("error decoding webhook response: %w", err)
 	}
@@ -1020,7 +1037,7 @@ func (c *EmporixClient) CreateWebhook(ctx context.Context, config *Configuration
 }
 
 // GetWebhook retrieves a webhook configuration by code
-func (c *EmporixClient) GetWebhook(ctx context.Context, code string) (*ConfigurationGet, error) {
+func (c *EmporixClient) GetWebhook(ctx context.Context, code string) (*WebhookConfigGet, error) {
 	path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
 
 	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
@@ -1044,10 +1061,10 @@ func (c *EmporixClient) GetWebhook(ctx context.Context, code string) (*Configura
 
 	// API returns an array with the webhook object.
 	// Try as array first, fall back to single object for backward compatibility.
-	var webhook ConfigurationGet
+	var webhook WebhookConfigGet
 
 	// Try array unmarshaling first (API returns array per schema)
-	var webhookArray []ConfigurationGet
+	var webhookArray []WebhookConfigGet
 	if err := json.Unmarshal(bodyBytes, &webhookArray); err == nil {
 		if len(webhookArray) == 0 {
 			return nil, fmt.Errorf("API returned empty array")
@@ -1064,7 +1081,7 @@ func (c *EmporixClient) GetWebhook(ctx context.Context, code string) (*Configura
 }
 
 // UpdateWebhook updates a webhook configuration using JSON Patch
-func (c *EmporixClient) UpdateWebhook(ctx context.Context, code string, patches []WebhookConfigPartialUpdates) (*ConfigurationGet, error) {
+func (c *EmporixClient) UpdateWebhook(ctx context.Context, code string, patches []WebhookConfigPartialUpdates) (*WebhookConfigGet, error) {
 	path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
 
 	// PATCH to API
@@ -1088,7 +1105,7 @@ func (c *EmporixClient) UpdateWebhook(ctx context.Context, code string, patches 
 		return nil, err
 	}
 
-	var webhook ConfigurationGet
+	var webhook WebhookConfigGet
 	if err := json.Unmarshal(bodyBytes, &webhook); err != nil {
 		return nil, fmt.Errorf("error decoding webhook: %w", err)
 	}

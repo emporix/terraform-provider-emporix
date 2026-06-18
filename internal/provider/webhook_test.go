@@ -114,7 +114,7 @@ func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
 			// Create with events configuration
 			{
 				Config: testAccWebhookResourceConfigWithEvents("test_webhook_events", `"http"`, `"https://example.com/webhook"`, false,
-					[]EventConfig{
+					[]testEventConfig{
 						{EventType: "order.created", DestinationUrl: "https://orders.example.com/webhook"},
 						{EventType: "customer.registered", DestinationUrl: "https://customers.example.com/webhook"},
 					}),
@@ -153,9 +153,8 @@ func TestAccWebhookResource_requiresReplace(t *testing.T) {
 	})
 }
 
-// Helper types for test config generation
-
-type EventConfig struct {
+// testEventConfig is a helper type for test config generation (NOT the API model)
+type testEventConfig struct {
 	EventType      string
 	DestinationUrl string
 }
@@ -199,7 +198,7 @@ func testAccWebhookResourceConfigWithHeaders(code, provider, destinationUrl stri
 }
 
 // testAccWebhookResourceConfigWithEvents generates a webhook resource config with events configuration
-func testAccWebhookResourceConfigWithEvents(code, provider, destinationUrl string, active bool, events []EventConfig) string {
+func testAccWebhookResourceConfigWithEvents(code, provider, destinationUrl string, active bool, events []testEventConfig) string {
 	eventsBlock := ``
 	if len(events) > 0 {
 		eventsBlock = `events_configuration = [`

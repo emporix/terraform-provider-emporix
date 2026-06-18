@@ -234,34 +234,20 @@ type SchemaMetadataUpdate struct {
 	Version int `json:"version"`
 }
 
+// IdResponse represents a response containing just an ID
+type IdResponse struct {
+	ID string `json:"id"`
+}
+
 // HeaderFieldValue represents a header value wrapper for the Emporix API.
 // All header values must be wrapped in this struct with structure: {"value": "string"}
 type HeaderFieldValue struct {
 	Value string `json:"value"`
 }
 
-// EventConfigurationNested represents event-specific configuration within the nested structure.
-// Headers inside eventsConfiguration must also use HeaderFieldValue wrapper.
-type EventConfigurationNested struct {
-	EventType      string                      `json:"eventType"`
-	DestinationUrl string                      `json:"destinationUrl,omitempty"`
-	SecretKey      string                      `json:"secretKey,omitempty"`
-	Headers        map[string]HeaderFieldValue `json:"headers,omitempty"`
-}
-
-// ConfigurationGetNested represents the nested configuration object returned by the GET API.
-// This contains provider-specific fields with HeaderFieldValue wrappers for headers.
-type ConfigurationGetNested struct {
-	DestinationUrl      string                        `json:"destinationUrl,omitempty"`
-	SecretKey           string                        `json:"secretKey,omitempty"`
-	SecretKeyExists     *bool                         `json:"secretKeyExists,omitempty"`
-	Headers             map[string]HeaderFieldValue   `json:"headers,omitempty"`
-	EventsConfiguration []EventConfigurationGetNested `json:"eventsConfiguration,omitempty"`
-}
-
-// EventConfigurationGetNested represents event-specific configuration within the GET response.
-// Headers inside eventsConfiguration must also use HeaderFieldValue wrapper.
-type EventConfigurationGetNested struct {
+// EventConfig represents event-specific configuration for both read and write operations.
+// Headers must use HeaderFieldValue wrapper. SecretKeyExists is used only in read responses.
+type EventConfig struct {
 	EventType       string                      `json:"eventType"`
 	DestinationUrl  string                      `json:"destinationUrl,omitempty"`
 	SecretKey       string                      `json:"secretKey,omitempty"`
@@ -269,24 +255,22 @@ type EventConfigurationGetNested struct {
 	Headers         map[string]HeaderFieldValue `json:"headers,omitempty"`
 }
 
-// ConfigurationGet represents the response for a webhook configuration.
-// This is a oneOf type: either SvixConfig or HttpConfig.
-// The API returns a nested configuration object (optional).
-type ConfigurationGet struct {
-	Code          string                  `json:"code"`
-	Active        bool                    `json:"active"`
-	Provider      string                  `json:"provider"`
-	Version       int                     `json:"version"`
-	Configuration *ConfigurationGetNested `json:"configuration,omitempty"`
+// WebhookConfig contains provider-specific configuration returned by the GET API.
+type WebhookConfig struct {
+	DestinationUrl      string                      `json:"destinationUrl,omitempty"`
+	SecretKey           string                      `json:"secretKey,omitempty"`
+	SecretKeyExists     *bool                       `json:"secretKeyExists,omitempty"`
+	Headers             map[string]HeaderFieldValue `json:"headers,omitempty"`
+	EventsConfiguration []EventConfig               `json:"eventsConfiguration,omitempty"`
 }
 
-// ConfigurationGetCreate represents the creation payload with provider-specific fields.
-// The API expects a nested 'configuration' object containing provider-specific fields.
-type ConfigurationGetCreate struct {
-	Code          string              `json:"code"`
-	Active        bool                `json:"active"`
-	Provider      string              `json:"provider"`
-	Configuration *NestedConfigCreate `json:"configuration,omitempty"`
+// WebhookConfigGet represents the response for a webhook configuration.
+type WebhookConfigGet struct {
+	Code          string         `json:"code"`
+	Active        bool           `json:"active"`
+	Provider      string         `json:"provider"`
+	Version       int            `json:"version"`
+	Configuration *WebhookConfig `json:"configuration,omitempty"`
 }
 
 // NestedConfigCreate represents the nested configuration object for webhook creation.
@@ -298,7 +282,7 @@ type NestedConfigCreate struct {
 	SecretKey           string                      `json:"secretKey,omitempty"`
 	ApiKey              string                      `json:"apiKey,omitempty"`
 	Headers             map[string]HeaderFieldValue `json:"headers,omitempty"`
-	EventsConfiguration []EventConfigurationNested  `json:"eventsConfiguration,omitempty"`
+	EventsConfiguration []EventConfig               `json:"eventsConfiguration,omitempty"`
 }
 
 // WebhookConfigPartialUpdates represents a JSON Patch operation for partial updates
@@ -310,10 +294,13 @@ type WebhookConfigPartialUpdates struct {
 
 // WebhookListResponse represents the response for listing webhooks
 type WebhookListResponse struct {
-	Configs []ConfigurationGet `json:"configs"`
+	Configs []WebhookConfigGet `json:"configs"`
 }
 
-// IdResponse represents a response containing just an ID
-type IdResponse struct {
-	ID string `json:"id"`
+// webhookCreateRequest is the creation payload for webhook configurations.
+type webhookCreateRequest struct {
+	Code          string              `json:"code"`
+	Active        bool                `json:"active"`
+	Provider      string              `json:"provider"`
+	Configuration *NestedConfigCreate `json:"configuration,omitempty"`
 }
