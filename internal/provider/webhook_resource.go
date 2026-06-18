@@ -361,7 +361,6 @@ func normalizeProvider(input string) string {
 	return strings.ToUpper(strings.ReplaceAll(input, "-", "_"))
 }
 
-// stringToNull converts a string to types.String, returning null for empty strings.
 func stringToNull(s string) types.String {
 	if s != "" {
 		return types.StringValue(s)
@@ -543,13 +542,6 @@ func buildPatchOperations(current *ConfigurationGet, plan, state WebhookResource
 	return patches
 }
 
-// ============================================================================
-// Sensitive Value Merge Helpers
-// ============================================================================
-
-// preserveTopLevelFields preserves top-level configuration values from state
-// when the API returns incomplete data (GET returns only code, provider, active).
-// Used in both Read() and Update().
 func preserveTopLevelFields(result, state *WebhookResourceModel) {
 	if result.DestinationUrl.IsNull() && !state.DestinationUrl.IsNull() {
 		result.DestinationUrl = state.DestinationUrl
@@ -562,9 +554,6 @@ func preserveTopLevelFields(result, state *WebhookResourceModel) {
 	}
 }
 
-// mergeSensitiveValuesIntoResult merges sensitive top-level values from plan into result
-// when the API doesn't return them (e.g., SVIX_SHARED provider doesn't return secretKey).
-// Used in Create() where there is no prior state.
 func mergeSensitiveValuesIntoResult(result, plan *WebhookResourceModel) {
 	if result.DestinationUrl.IsNull() && !plan.DestinationUrl.IsNull() {
 		result.DestinationUrl = plan.DestinationUrl
@@ -577,22 +566,16 @@ func mergeSensitiveValuesIntoResult(result, plan *WebhookResourceModel) {
 	}
 }
 
-// mergeEventsFromState merges sensitive event values from state into result,
-// and reorders result to match state's event order.
 func mergeEventsFromState(result *WebhookResourceModel, state *WebhookResourceModel) {
 	mergeEventsFromSource(&result.EventsConfiguration, state.EventsConfiguration)
 	reorderEventsToMatch(&result.EventsConfiguration, state.EventsConfiguration)
 }
 
-// mergeEventsFromPlan merges sensitive event values from plan into result,
-// and reorders result to match plan's event order.
 func mergeEventsFromPlan(result *WebhookResourceModel, plan *WebhookResourceModel) {
 	mergeEventsFromSource(&result.EventsConfiguration, plan.EventsConfiguration)
 	reorderEventsToMatch(&result.EventsConfiguration, plan.EventsConfiguration)
 }
 
-// mergeEventsFromSource merges sensitive event values (secret_key, headers, destination_url)
-// from source events into result events, matching by event_type.
 func mergeEventsFromSource(result *[]EventConfigModel, source []EventConfigModel) {
 	sourceMap := make(map[string]EventConfigModel, len(source))
 	for _, srcEvent := range source {
@@ -615,8 +598,6 @@ func mergeEventsFromSource(result *[]EventConfigModel, source []EventConfigModel
 	}
 }
 
-// reorderEventsToMatch reorders the result slice to match the order of the reference slice,
-// matching by event_type.
 func reorderEventsToMatch(result *[]EventConfigModel, reference []EventConfigModel) {
 	reordered := make([]EventConfigModel, len(*result))
 	for i, refEvent := range reference {
