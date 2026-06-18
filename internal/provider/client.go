@@ -938,7 +938,6 @@ func (c *EmporixClient) DeleteTenantConfiguration(ctx context.Context, key strin
 	return nil
 }
 
-// CreateWebhook creates a new webhook configuration
 // ListWebhooks retrieves all webhook configurations for the tenant
 func (c *EmporixClient) ListWebhooks(ctx context.Context) ([]ConfigurationGet, error) {
 	path := fmt.Sprintf("/webhook/%s/config", strings.ToLower(c.Tenant))
@@ -1003,13 +1002,11 @@ func (c *EmporixClient) CreateWebhook(ctx context.Context, config *Configuration
 		return nil, err
 	}
 
-	// Try to unmarshal as a single object first
 	var singleWebhook ConfigurationGet
 	if err := json.Unmarshal(bodyBytes, &singleWebhook); err == nil {
 		return &singleWebhook, nil
 	}
 
-	// Fall back to array unmarshaling
 	var createdWebhooks []ConfigurationGet
 	if err := json.Unmarshal(bodyBytes, &createdWebhooks); err != nil {
 		return nil, fmt.Errorf("error decoding webhook response: %w", err)
@@ -1067,8 +1064,6 @@ func (c *EmporixClient) GetWebhook(ctx context.Context, code string) (*Configura
 }
 
 // UpdateWebhook updates a webhook configuration using JSON Patch
-// Returns nil because the API returns 204 No Content with no response body.
-// The caller should perform a separate GET to fetch the updated state.
 func (c *EmporixClient) UpdateWebhook(ctx context.Context, code string, patches []WebhookConfigPartialUpdates) (*ConfigurationGet, error) {
 	path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
 
@@ -1086,7 +1081,6 @@ func (c *EmporixClient) UpdateWebhook(ctx context.Context, code string, patches 
 
 	// Accept both 200 OK (with response body) and 204 No Content (empty response)
 	if resp.StatusCode == http.StatusNoContent {
-		// 204 No Content - update succeeded but no body returned
 		return nil, nil
 	}
 
@@ -1104,9 +1098,7 @@ func (c *EmporixClient) UpdateWebhook(ctx context.Context, code string, patches 
 
 // DeleteWebhook deletes a webhook configuration by code
 func (c *EmporixClient) DeleteWebhook(ctx context.Context, code string) error {
-	// force=true is required by the Emporix API to permanently delete webhooks
-	path := fmt.Sprintf("/webhook/%s/config/%s?force=true", strings.ToLower(c.Tenant), code)
-	// path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
+	path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
 
 	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
 	if err != nil {
