@@ -1,4 +1,6 @@
 # Webhook Subscription Examples
+# API allows only 1 configuration of given type. So you can have 1 http, 1 SVIX and 1 shared SVIX config.
+# To test, uncomment desiresd setup.
 
 terraform {
   required_providers {
@@ -50,13 +52,13 @@ variable "emporix_client_secret" {
 # A basic webhook using direct HTTP POST provider.
 # Events are sent to the destination URL with optional secret key for HMAC signing.
 
-resource "emporix_webhook" "order_created" {
-  code          = "myOrderCreated"
-  provider_type = "http"
-  destination_url = "<target URL>"
-  active        = true
-  secret_key = "my-secret-signing-key"
-}
+# resource "emporix_webhook" "order_created" {
+#   code          = "myOrderCreated"
+#   provider_type = "http"
+#   destination_url = "<URL>"
+#   active        = false
+#   secret_key = "my-secret-signing-key"
+# }
 
 # =============================================================================
 # Example 2: SVIX Shared Provider (Default Emporix Svix Server)
@@ -66,7 +68,7 @@ resource "emporix_webhook" "order_created" {
 resource "emporix_webhook" "svix-shared_webhook" {
   code          = "svixSharedWebhook"
   provider_type = "svix-shared"
-  active        = true
+  active        = false
 }
 
 # =============================================================================
@@ -77,9 +79,9 @@ resource "emporix_webhook" "svix-shared_webhook" {
 # resource "emporix_webhook" "svix_webhook" {
 #   code          = "mySvixWebhook"
 #   provider_type = "svix"
-#   destination_url = "<target URL>"
+#   destination_url = "<URL>"
 #   active        = true
-#
+
 #   # Svix application secret key for signing
 #   secret_key = "SARFJ353DSTGSd3w3cZXX"
 # }
@@ -89,20 +91,20 @@ resource "emporix_webhook" "svix-shared_webhook" {
 # =============================================================================
 # Add custom HTTP headers to webhook requests for authentication or tracing.
 
-resource "emporix_webhook" "order_webhook_with_headers" {
-  code          = "orderWebhookWithHeaders2"
-  provider_type = "http"
-  destination_url = "<target URL>"
-  active        = true
+# resource "emporix_webhook" "order_webhook_with_headers" {
+#   code          = "orderWebhookWithHeaders"
+#   provider_type = "http"
+#   destination_url = "<URL>"
+#   active        = false
 
-  secret_key = "my-secret-key"
+#   secret_key = "my-secret-key"
 
-  headers = {
-    X-Api-Key     = "api-key-1234"
-    X-Request-ID  = "{{uuid}}"
-    Custom-Header = "custom-value"
-  }
-}
+#   headers = {
+#     X-Api-Key     = "api-key-12345"
+#     X-Request-ID  = "{{uuid}}"
+#     Custom-Header = "custom-value"
+#   }
+# }
 
 # =============================================================================
 # Example 5: Webhook with Event-Specific Configuration
@@ -112,16 +114,16 @@ resource "emporix_webhook" "order_webhook_with_headers" {
 # resource "emporix_webhook" "multi_event_webhook" {
 #   code          = "multiEventWebhook"
 #   provider_type = "http"
-#   destination_url = "<target URL>"
-#   active        = true
-#
+#   destination_url = "<URL>"
+#   active        = false
+
 #   secret_key = "default-secret-key"
-#
+
 #   # Event-specific overrides
 #   events_configuration = [
 #     {
 #       event_type      = "order.created"
-#       destination_url = "<target URL>"
+#       destination_url = "<URL>"
 #       secret_key      = "orders-secret-key"
 #       headers = {
 #         X-Event-Group = "orders"
@@ -130,14 +132,14 @@ resource "emporix_webhook" "order_webhook_with_headers" {
 #     {
 #       event_type = "customer.created"
 #       secret_key = "customers-secret-key"
-#       destination_url = "<target URL>"
+#       destination_url = "<URL>"
 #       headers = {
 #         X-Event-Group = "customers"
 #       }
 #     },
 #     {
 #       event_type      = "product.updated"
-#       destination_url = "<target URL>"
+#       destination_url = "<URL>"
 #     }
 #   ]
 # }
@@ -150,7 +152,7 @@ resource "emporix_webhook" "order_webhook_with_headers" {
 # resource "emporix_webhook" "inactive_webhook" {
 #   code          = "inactiveWebhook"
 #   provider_type = "http"
-#   destination_url = "<target URL>"
+#   destination_url = "<URL>"
 #   active        = false
 # }
 
@@ -197,41 +199,41 @@ locals {
 # Outputs - Display current webhook configurations after terraform apply
 # =============================================================================
 
-output "webhook_configurations" {
-  description = "List of all configured webhooks with their key settings"
-  value = [
-    {
-      name            = "svix-shared_webhook"
-      code            = emporix_webhook.svix-shared_webhook.code
-      active          = emporix_webhook.svix-shared_webhook.active
-      provider_type   = emporix_webhook.svix-shared_webhook.provider_type
-      destination_url = emporix_webhook.svix-shared_webhook.destination_url
-      version         = emporix_webhook.svix-shared_webhook.version
-    },
-    {
-      name            = "order_webhook_with_headers"
-      code            = emporix_webhook.order_webhook_with_headers.code
-      active          = emporix_webhook.order_webhook_with_headers.active
-      provider_type   = emporix_webhook.order_webhook_with_headers.provider_type
-      destination_url = emporix_webhook.order_webhook_with_headers.destination_url
-      version         = emporix_webhook.order_webhook_with_headers.version
-      headers         = emporix_webhook.order_webhook_with_headers.headers
-    }
-  ]
-}
+# output "webhook_configurations" {
+#   description = "List of all configured webhooks with their key settings"
+#   value = [
+#     {
+#       name            = "svix-shared_webhook"
+#       code            = emporix_webhook.svix-shared_webhook.code
+#       active          = emporix_webhook.svix-shared_webhook.active
+#       provider_type   = emporix_webhook.svix-shared_webhook.provider_type
+#       destination_url = emporix_webhook.svix-shared_webhook.destination_url
+#       version         = emporix_webhook.svix-shared_webhook.version
+#     },
+#     {
+#       name            = "order_webhook_with_headers"
+#       code            = emporix_webhook.order_webhook_with_headers.code
+#       active          = emporix_webhook.order_webhook_with_headers.active
+#       provider_type   = emporix_webhook.order_webhook_with_headers.provider_type
+#       destination_url = emporix_webhook.order_webhook_with_headers.destination_url
+#       version         = emporix_webhook.order_webhook_with_headers.version
+#       headers         = emporix_webhook.order_webhook_with_headers.headers
+#     }
+#   ]
+# }
 
-output "webhook_summary" {
-  description = "Summary of webhook configurations (code, active status, provider type)"
-  value = {
-    "svix-shared_webhook" = {
-      code          = emporix_webhook.svix-shared_webhook.code
-      active        = emporix_webhook.svix-shared_webhook.active
-      provider_type = emporix_webhook.svix-shared_webhook.provider_type
-    }
-    "order_webhook_with_headers" = {
-      code          = emporix_webhook.order_webhook_with_headers.code
-      active        = emporix_webhook.order_webhook_with_headers.active
-      provider_type = emporix_webhook.order_webhook_with_headers.provider_type
-    }
-  }
-}
+# output "webhook_summary" {
+#   description = "Summary of webhook configurations (code, active status, provider type)"
+#   value = {
+#     "svix-shared_webhook" = {
+#       code          = emporix_webhook.svix-shared_webhook.code
+#       active        = emporix_webhook.svix-shared_webhook.active
+#       provider_type = emporix_webhook.svix-shared_webhook.provider_type
+#     }
+#     "order_webhook_with_headers" = {
+#       code          = emporix_webhook.order_webhook_with_headers.code
+#       active        = emporix_webhook.order_webhook_with_headers.active
+#       provider_type = emporix_webhook.order_webhook_with_headers.provider_type
+#     }
+#   }
+# }
