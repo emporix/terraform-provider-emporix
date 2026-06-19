@@ -1011,10 +1011,10 @@ func (c *EmporixClient) CreateWebhook(ctx context.Context, config *webhookCreate
 		if resp.StatusCode == http.StatusConflict {
 			return nil, fmt.Errorf("webhook configuration with code %q already exists. "+
 				"If this resource was previously managed by Terraform, import it with: "+
-				"`terraform import emporix_webhook.%s %s`. "+
+				"`terraform import emporix_webhook.<resource_name> %s`. "+
 				"Otherwise, delete the existing webhook from the Emporix UI or API and try again. "+
 				"Error details: %s",
-				config.Code, config.Code, config.Code, err)
+				config.Code, config.Code, err)
 		}
 		return nil, err
 	}
