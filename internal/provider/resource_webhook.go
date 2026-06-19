@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var _ resource.Resource = &WebhookResource{}
@@ -163,38 +161,10 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 	mu.Lock()
 	defer mu.Unlock()
 
-	tflog.Debug(ctx, "Creating webhook configuration", map[string]interface{}{
-		"code":          plan.Code.ValueString(),
-		"user_provider": userProviderValue,
-		"api_provider":  apiProviderValue,
-		"plan_active":   plan.Active.ValueBool(),
-	})
-
 	// Pre-check: List existing webhooks to diagnose 409 conflicts and enforce active constraint
 	// This helps identify if the resource exists with a different case or is soft-deleted
 	existingWebhooks, listErr := r.client.ListWebhooks(ctx)
-	if listErr != nil {
-		tflog.Warn(ctx, "Failed to list existing webhooks during pre-check", map[string]interface{}{
-			"error": listErr.Error(),
-		})
-	} else {
-		tflog.Debug(ctx, "Pre-check: existing webhooks", map[string]interface{}{
-			"count":          len(existingWebhooks),
-			"requested_code": plan.Code.ValueString(),
-		})
-		for i, wh := range existingWebhooks {
-			tflog.Debug(ctx, "Pre-check: existing webhook", map[string]interface{}{
-				"index":  i,
-				"code":   wh.Code,
-				"active": wh.Active,
-			})
-			if wh.Code == plan.Code.ValueString() {
-				tflog.Warn(ctx, "Found existing webhook with exact code match during pre-check", map[string]interface{}{
-					"code": wh.Code,
-				})
-			}
-		}
-
+	if listErr == nil {
 		// API requires at least one active webhook. If plan wants to create an inactive webhook
 		// and no other active webhooks exist, force active=true.
 		if plan.Active.ValueBool() == false {
@@ -206,9 +176,6 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 				}
 			}
 			if !anyActive {
-				tflog.Info(ctx, "Forcing active=true for new webhook - no other active webhooks exist", map[string]interface{}{
-					"code": plan.Code.ValueString(),
-				})
 				plan.Active = types.BoolValue(true)
 			}
 		}
@@ -222,26 +189,11 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 		Configuration: nestedConfig,
 	}
 
-	requestJSON, _ := json.MarshalIndent(createReq, "", "  ")
-	tflog.Info(ctx, "Webhook Create Request JSON", map[string]interface{}{
-		"request_json": string(requestJSON),
-	})
-
 	webhook, err := r.client.CreateWebhook(ctx, createReq)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create webhook configuration, got error: %s", err))
 		return
 	}
-
-	apiConfigNil := webhook.Configuration == nil
-	apiSecretKeyEmpty := apiConfigNil || len(webhook.Configuration.SecretKey) == 0
-	tflog.Debug(ctx, "Post-create GET response received, converting to model", map[string]interface{}{
-		"webhook_code":         webhook.Code,
-		"api_config_nil":       apiConfigNil,
-		"api_secret_key_empty": apiSecretKeyEmpty,
-		"plan_secret_key_set":  !plan.SecretKeyString.IsNull(),
-		"user_provider_value":  userProviderValue,
-	})
 
 	webhook, err = r.client.GetWebhook(ctx, webhook.Code)
 	if err != nil {
@@ -267,10 +219,6 @@ func (r *WebhookResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	tflog.Debug(ctx, "Reading webhook configuration", map[string]interface{}{
-		"code": state.Code.ValueString(),
-	})
 
 	webhook, err := r.client.GetWebhook(ctx, state.Code.ValueString())
 	if err != nil {
@@ -312,15 +260,6 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	userProviderValue := plan.Provider.ValueString()
-	apiProviderValue := normalizeProvider(plan.Provider.ValueString())
-
-	tflog.Debug(ctx, "Updating webhook configuration", map[string]interface{}{
-		"code":          plan.Code.ValueString(),
-		"user_provider": userProviderValue,
-		"api_provider":  apiProviderValue,
-		"plan_active":   plan.Active.ValueBool(),
-		"state_active":  state.Active.ValueBool(),
-	})
 
 	mu := getWebhookMutex(r.client.Tenant)
 	mu.Lock()
@@ -328,11 +267,7 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	if !plan.Active.Equal(state.Active) && plan.Active.ValueBool() == false && state.Active.ValueBool() == true {
 		existingWebhooks, listErr := r.client.ListWebhooks(ctx)
-		if listErr != nil {
-			tflog.Warn(ctx, "Failed to list webhooks for pre-check, proceeding with update anyway", map[string]interface{}{
-				"error": listErr.Error(),
-			})
-		} else {
+		if listErr == nil {
 			otherActiveCount := 0
 			for _, wh := range existingWebhooks {
 				if wh.Active && wh.Code != plan.Code.ValueString() {
@@ -340,9 +275,6 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 				}
 			}
 			if otherActiveCount == 0 {
-				tflog.Info(ctx, "Skipping disable of last active webhook - another webhook must be enabled first", map[string]interface{}{
-					"code": plan.Code.ValueString(),
-				})
 				// Read current state to update version/other computed fields
 				current, err := r.client.GetWebhook(ctx, plan.Code.ValueString())
 				if err != nil {
@@ -355,9 +287,6 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 				resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
 				return
 			}
-			tflog.Debug(ctx, "Pre-check passed: other active webhooks exist", map[string]interface{}{
-				"other_active_count": otherActiveCount,
-			})
 		}
 	}
 
@@ -405,10 +334,6 @@ func (r *WebhookResource) Delete(ctx context.Context, req resource.DeleteRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	tflog.Info(ctx, "Deleting webhook configuration", map[string]interface{}{
-		"code": state.Code.ValueString(),
-	})
 
 	err := r.client.DeleteWebhook(ctx, state.Code.ValueString())
 	if err != nil {
