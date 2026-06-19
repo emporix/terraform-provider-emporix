@@ -243,7 +243,9 @@ func (r *WebhookResource) Read(ctx context.Context, req resource.ReadRequest, re
 		result.EventsConfiguration = nil
 	}
 
-	result.Provider = state.Provider
+	if !state.Provider.IsNull() {
+		result.Provider = state.Provider
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
 }
 
@@ -297,6 +299,22 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	patches := buildPatchOperations(current, plan, state)
+
+	// Skip API call if no patches are needed (plan and state are identical).
+	// The API rejects PATCH requests with an empty body.
+	if len(patches) == 0 {
+		// Just refresh state from API
+		webhook, err := r.client.GetWebhook(ctx, plan.Code.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read webhook state, got error: %s", err))
+			return
+		}
+		result := webhookToModel(webhook)
+		preserveTopLevelFields(&result, &state)
+		result.Provider = types.StringValue(userProviderValue)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
+		return
+	}
 
 	_, err = r.client.UpdateWebhook(ctx, plan.Code.ValueString(), patches)
 	if err != nil {

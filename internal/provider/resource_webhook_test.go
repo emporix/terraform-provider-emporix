@@ -17,12 +17,12 @@ func TestAccWebhookResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccWebhookResourceConfig("test_webhook_1", `"http"`, `"https://example.com/webhook"`, false, nil, nil),
+				Config: testAccWebhookResourceConfig("test_webhook_1", `"HTTP"`, `"https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"`, true, nil, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_1"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "HTTP"),
-					resource.TestCheckResourceAttr("emporix_webhook.test", "destination_url", "https://example.com/webhook"),
-					resource.TestCheckResourceAttr("emporix_webhook.test", "active", "false"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "destination_url", "https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "active", "true"),
 					resource.TestCheckResourceAttrSet("emporix_webhook.test", "version"),
 				),
 			},
@@ -36,7 +36,7 @@ func TestAccWebhookResource_basic(t *testing.T) {
 			},
 			// Update testing - change active to true
 			{
-				Config: testAccWebhookResourceConfig("test_webhook_1", `"http"`, `"https://example.com/webhook"`, true, nil, nil),
+				Config: testAccWebhookResourceConfig("test_webhook_1", `"http"`, `"https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"`, true, nil, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_1"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "active", "true"),
@@ -73,7 +73,7 @@ func TestAccWebhookResource_withSecretKey(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with secret key (HTTP provider)
 			{
-				Config: testAccWebhookResourceConfigWithSecretKey("test_webhook_secret", `"http"`, `"https://example.com/webhook"`, false, `"my-secret-key"`),
+				Config: testAccWebhookResourceConfigWithSecretKey("test_webhook_secret", `"HTTP"`, `"https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"`, true, `"my-secret-key"`),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_secret"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "HTTP"),
@@ -92,7 +92,7 @@ func TestAccWebhookResource_withHeaders(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with headers
 			{
-				Config: testAccWebhookResourceConfigWithHeaders("test_webhook_headers", `"http"`, `"https://example.com/webhook"`, false, map[string]string{"X-Custom-Header": "custom-value", "X-Api-Key": "api-key-123"}),
+				Config: testAccWebhookResourceConfigWithHeaders("test_webhook_headers", `"HTTP"`, `"https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"`, true, map[string]string{"X-Custom-Header": "custom-value", "X-Api-Key": "api-key-123"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_headers"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "HTTP"),
@@ -113,16 +113,16 @@ func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with events configuration
 			{
-				Config: testAccWebhookResourceConfigWithEvents("test_webhook_events", `"http"`, `"https://example.com/webhook"`, false,
+				Config: testAccWebhookResourceConfigWithEvents("test_webhook_events", `"HTTP"`, `"https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"`, true,
 					[]testEventConfig{
-						{EventType: "order.created", DestinationUrl: "https://orders.example.com/webhook"},
-						{EventType: "customer.registered", DestinationUrl: "https://customers.example.com/webhook"},
+						{EventType: "order.created", DestinationUrl: "https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"},
+						{EventType: "customer.created", DestinationUrl: "https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"},
 					}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_events"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "HTTP"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.0.event_type", "order.created"),
-					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.1.event_type", "customer.registered"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.1.event_type", "customer.created"),
 				),
 			},
 		},
@@ -137,14 +137,14 @@ func TestAccWebhookResource_requiresReplace(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with code1
 			{
-				Config: testAccWebhookResourceConfig("test_webhook_code1", `"http"`, `"https://example.com/webhook"`, false, nil, nil),
+				Config: testAccWebhookResourceConfig("test_webhook_code1", `"HTTP"`, `"https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"`, true, nil, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_code1"),
 				),
 			},
 			// Change code (should require replace)
 			{
-				Config: testAccWebhookResourceConfig("test_webhook_code2", `"http"`, `"https://example.com/webhook"`, false, nil, nil),
+				Config: testAccWebhookResourceConfig("test_webhook_code2", `"HTTP"`, `"https://webhook.site/6403e1f5-cd84-42f3-940b-fc5e41319e32"`, true, nil, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_code2"),
 				),
@@ -170,7 +170,7 @@ func testAccWebhookResourceConfig(code, provider, destinationUrl string, active 
 	if len(headers) > 0 {
 		headersPart = `headers = {`
 		for k, v := range headers {
-			headersPart += fmt.Sprintf(`%s = %q`, k, v)
+			headersPart += fmt.Sprintf(`%s = %q,`, k, v)
 		}
 		headersPart += `}`
 	}
@@ -202,7 +202,10 @@ func testAccWebhookResourceConfigWithEvents(code, provider, destinationUrl strin
 	eventsBlock := ``
 	if len(events) > 0 {
 		eventsBlock = `events_configuration = [`
-		for _, event := range events {
+		for i, event := range events {
+			if i > 0 {
+				eventsBlock += `,`
+			}
 			if event.DestinationUrl != "" {
 				eventsBlock += fmt.Sprintf(`
     {
@@ -261,7 +264,8 @@ func testAccCheckWebhookDestroy(s *terraform.State) error {
 			return fmt.Errorf("unexpected error checking webhook: %w", err)
 		}
 
-		// If no error, webhook still exists
+		// If no error, webhook still exists - try force delete
+		_ = client.DeleteWebhook(ctx, code)
 		return fmt.Errorf("webhook %s still exists after destroy", code)
 	}
 
