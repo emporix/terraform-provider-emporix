@@ -536,9 +536,13 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 	}
 
 	if !plan.SecretKeyString.Equal(state.SecretKeyString) {
+		secretKeyPath := configPrefix + "/secretKey"
+		if provider == "SVIX" || provider == "SVIX_SHARED" {
+			secretKeyPath = configPrefix + "/apiKey"
+		}
 		patches = append(patches, WebhookConfigPartialUpdates{
 			Op:    "UPSERT",
-			Path:  configPrefix + "/secretKey",
+			Path:  secretKeyPath,
 			Value: plan.SecretKeyString.ValueString(),
 		})
 	}
