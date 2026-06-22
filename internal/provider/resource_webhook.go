@@ -387,11 +387,20 @@ func buildNestedConfigFromModel(model WebhookResourceModel, providerType string)
 
 	config := &NestedConfigCreate{}
 
-	if normalizedProvider == "SVIX" || normalizedProvider == "SVIX_SHARED" {
+	switch normalizedProvider {
+	case "SVIX_SHARED":
 		if !model.SecretKeyString.IsNull() {
 			config.ApiKey = model.SecretKeyString.ValueString()
 		}
-	} else {
+	case "SVIX":
+		if !model.DestinationUrl.IsNull() {
+			config.DestinationUrl = model.DestinationUrl.ValueString()
+		}
+
+		if !model.SecretKeyString.IsNull() {
+			config.ApiKey = model.SecretKeyString.ValueString()
+		}
+	default:
 		if !model.DestinationUrl.IsNull() {
 			config.DestinationUrl = model.DestinationUrl.ValueString()
 		}
