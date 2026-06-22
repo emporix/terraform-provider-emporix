@@ -70,7 +70,5 @@ func getTestClient() (*EmporixClient, error) {
 	}
 
 	// Create and return client
-	client := NewEmporixClient(tenant, token, apiURL)
-	client.ForceDelete = true
-	return client, nil
+	return NewEmporixClient(tenant, token, apiURL), nil
 }

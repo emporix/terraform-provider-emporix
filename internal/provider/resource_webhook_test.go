@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -10,6 +11,12 @@ import (
 )
 
 func TestAccWebhookResource_basic(t *testing.T) {
+	// Enable force deletion for webhook tests
+	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
+	t.Cleanup(func() {
+		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
+	})
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -66,6 +73,11 @@ func TestAccWebhookResource_svixProvider(t *testing.T) {
 }
 
 func TestAccWebhookResource_withSecretKey(t *testing.T) {
+	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
+	t.Cleanup(func() {
+		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
+	})
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -85,6 +97,11 @@ func TestAccWebhookResource_withSecretKey(t *testing.T) {
 }
 
 func TestAccWebhookResource_withHeaders(t *testing.T) {
+	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
+	t.Cleanup(func() {
+		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
+	})
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -106,6 +123,11 @@ func TestAccWebhookResource_withHeaders(t *testing.T) {
 }
 
 func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
+	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
+	t.Cleanup(func() {
+		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
+	})
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -130,6 +152,11 @@ func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
 }
 
 func TestAccWebhookResource_requiresReplace(t *testing.T) {
+	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
+	t.Cleanup(func() {
+		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
+	})
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,

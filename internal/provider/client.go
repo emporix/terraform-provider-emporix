@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -84,7 +85,7 @@ type EmporixClient struct {
 	AccessToken string
 	ApiUrl      string
 	httpClient  *http.Client
-	// ForceDelete enables force=true query parameter for webhook deletion (test use only)
+	// ForceDelete enables force=true query parameter for webhook deletion
 	ForceDelete bool
 }
 
@@ -1118,7 +1119,7 @@ func (c *EmporixClient) UpdateWebhook(ctx context.Context, code string, patches 
 // DeleteWebhook deletes a webhook configuration by code
 func (c *EmporixClient) DeleteWebhook(ctx context.Context, code string) error {
 	path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
-	if c.ForceDelete {
+	if c.ForceDelete || os.Getenv("EMPORIX_WEBHOOK_FORCE_DELETE") == "true" {
 		path += "?force=true"
 	}
 
