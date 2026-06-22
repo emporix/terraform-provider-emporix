@@ -329,7 +329,7 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	result := webhookToModel(webhook)
-	preserveTopLevelFields(&result, &state)
+	mergeSensitiveValuesIntoResult(&result, &plan)
 
 	if len(result.EventsConfiguration) == 0 && len(plan.EventsConfiguration) > 0 {
 		result.EventsConfiguration = plan.EventsConfiguration
