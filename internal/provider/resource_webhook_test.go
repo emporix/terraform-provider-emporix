@@ -195,11 +195,11 @@ func testAccWebhookResourceConfig(code, provider, destinationUrl string, active 
 
 	headersPart := ""
 	if len(headers) > 0 {
-		headersPart = `headers = {`
+		headersPart = "headers = {\n"
 		for k, v := range headers {
-			headersPart += fmt.Sprintf(`%s = %q,`, k, v)
+			headersPart += fmt.Sprintf("    %q = %q\n", k, v)
 		}
-		headersPart += `}`
+		headersPart += "  }"
 	}
 
 	return fmt.Sprintf(`
