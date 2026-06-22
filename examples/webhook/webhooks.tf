@@ -80,7 +80,6 @@ variable "emporix_client_secret" {
 # resource "emporix_webhook" "svix_webhook" {
 #   code          = "mySvixWebhook"
 #   provider_type = "svix"
-#   destination_url = "<URL>"
 #   active        = true
 
 #   # Svix application secret key for signing
