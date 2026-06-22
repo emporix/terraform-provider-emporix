@@ -610,14 +610,27 @@ func mergeEventsFromSource(result *[]EventConfigModel, source []EventConfigModel
 }
 
 func reorderEventsToMatch(result *[]EventConfigModel, reference []EventConfigModel) {
-	reordered := make([]EventConfigModel, len(*result))
-	for i, refEvent := range reference {
-		refEventType := refEvent.EventType.ValueString()
-		for j, resultEvent := range *result {
-			if resultEvent.EventType.ValueString() == refEventType {
-				reordered[i] = (*result)[j]
-				break
-			}
+	if len(reference) == 0 || len(*result) == 0 {
+		return
+	}
+	resultByType := make(map[string]EventConfigModel, len(*result))
+	for _, e := range *result {
+		resultByType[e.EventType.ValueString()] = e
+	}
+	reordered := make([]EventConfigModel, 0, len(*result))
+	used := make(map[string]struct{}, len(reference))
+	for _, refEvent := range reference {
+		refType := refEvent.EventType.ValueString()
+		if e, ok := resultByType[refType]; ok {
+			reordered = append(reordered, e)
+			used[refType] = struct{}{}
+		}
+	}
+	// Append any remaining events to avoid dropping API-returned data.
+	for _, e := range *result {
+		t := e.EventType.ValueString()
+		if _, ok := used[t]; !ok {
+			reordered = append(reordered, e)
 		}
 	}
 	*result = reordered
