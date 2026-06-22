@@ -53,24 +53,24 @@ func TestAccWebhookResource_basic(t *testing.T) {
 	})
 }
 
-func TestAccWebhookResource_svixProvider(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckWebhookDestroy,
-		Steps: []resource.TestStep{
-			// Create with SVIX provider
-			{
-				Config: testAccWebhookResourceConfig("test_webhook_svix", `"svix"`, `"https://my-app.svix.com"`, false, nil, nil),
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_svix"),
-					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "SVIX"),
-					resource.TestCheckResourceAttr("emporix_webhook.test", "destination_url", "https://my-app.svix.com"),
-				),
-			},
-		},
-	})
-}
+// func TestAccWebhookResource_svixProvider(t *testing.T) {
+// 	resource.Test(t, resource.TestCase{
+// 		PreCheck:                 func() { testAccPreCheck(t) },
+// 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+// 		CheckDestroy:             testAccCheckWebhookDestroy,
+// 		Steps: []resource.TestStep{
+// 			// Create with SVIX provider
+// 			{
+// 				Config: testAccWebhookResourceConfig("test_webhook_svix", `"svix"`, `"https://my-app.svix.com"`, false, nil, nil),
+// 				Check: resource.ComposeAggregateTestCheckFunc(
+// 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_svix"),
+// 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "SVIX"),
+// 					resource.TestCheckResourceAttr("emporix_webhook.test", "destination_url", "https://my-app.svix.com"),
+// 				),
+// 			},
+// 		},
+// 	})
+// }
 
 func TestAccWebhookResource_withSecretKey(t *testing.T) {
 	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")

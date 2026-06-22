@@ -71,7 +71,7 @@ func (r *WebhookResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Default:             booldefault.StaticBool(false),
 			},
 			"provider_type": schema.StringAttribute{
-				MarkdownDescription: "Webhook provider type. Accepted values are case-insensitive and dashes are converted to underscores. Canonical format is UPPERCASE with underscores: 'http' (normalized to 'HTTP'), 'svix' (normalized to 'SVIX'), 'svix_shared' or 'svix-shared' (normalized to 'SVIX_SHARED').",
+				MarkdownDescription: "Webhook provider type. Accepted values are case-insensitive and dashes are converted to underscores for API requests.",
 				Required:            true,
 			},
 			"destination_url": schema.StringAttribute{
