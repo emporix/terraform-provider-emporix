@@ -85,8 +85,6 @@ type EmporixClient struct {
 	AccessToken string
 	ApiUrl      string
 	httpClient  *http.Client
-	// ForceDelete enables force=true query parameter for webhook deletion
-	ForceDelete bool
 }
 
 func NewEmporixClient(tenant, accessToken, apiUrl string) *EmporixClient {
@@ -989,7 +987,9 @@ func (c *EmporixClient) ListWebhooks(ctx context.Context) ([]WebhookConfigGet, e
 	return response.Configs, nil
 }
 
-// CreateWebhook creates a new webhook configuration
+// CreateWebhook creates a new webhook configuration.
+// The POST response returns a minimal ID response { "code": "svix" },
+// so a GET is performed afterward to fetch the full webhook state.
 func (c *EmporixClient) CreateWebhook(ctx context.Context, config *webhookCreateRequest) (*WebhookConfigGet, error) {
 	path := fmt.Sprintf("/webhook/%s/config", strings.ToLower(c.Tenant))
 
@@ -1007,8 +1007,6 @@ func (c *EmporixClient) CreateWebhook(ctx context.Context, config *webhookCreate
 		return nil, fmt.Errorf("error reading response body: %w", readErr)
 	}
 
-	// API may return either a single object or an array with the first element.
-	// Try single object first (new nested config response), fall back to array (legacy).
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
 		// Provide a more helpful error message for 409 Conflict (resource already exists)
 		if resp.StatusCode == http.StatusConflict {
@@ -1022,21 +1020,16 @@ func (c *EmporixClient) CreateWebhook(ctx context.Context, config *webhookCreate
 		return nil, err
 	}
 
-	var singleWebhook WebhookConfigGet
-	if err := json.Unmarshal(bodyBytes, &singleWebhook); err == nil {
-		return &singleWebhook, nil
+	// Parse the minimal ID response to extract the code for the subsequent GET.
+	var idResp struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(bodyBytes, &idResp); err != nil {
+		return nil, fmt.Errorf("error decoding webhook create response: %w", err)
 	}
 
-	var createdWebhooks []WebhookConfigGet
-	if err := json.Unmarshal(bodyBytes, &createdWebhooks); err != nil {
-		return nil, fmt.Errorf("error decoding webhook response: %w", err)
-	}
-
-	if len(createdWebhooks) == 0 {
-		return nil, fmt.Errorf("API returned empty array")
-	}
-
-	return &createdWebhooks[0], nil
+	// POST returns only { "code": "..." }; fetch the full state via GET.)
+	return c.GetWebhook(ctx, idResp.Code)
 }
 
 // GetWebhook retrieves a webhook configuration by code
@@ -1062,20 +1055,7 @@ func (c *EmporixClient) GetWebhook(ctx context.Context, code string) (*WebhookCo
 		return nil, err
 	}
 
-	// API returns an array with the webhook object.
-	// Try as array first, fall back to single object for backward compatibility.
 	var webhook WebhookConfigGet
-
-	// Try array unmarshaling first (API returns array per schema)
-	var webhookArray []WebhookConfigGet
-	if err := json.Unmarshal(bodyBytes, &webhookArray); err == nil {
-		if len(webhookArray) == 0 {
-			return nil, fmt.Errorf("API returned empty array")
-		}
-		return &webhookArray[0], nil
-	}
-
-	// Fall back to single object unmarshaling
 	if err := json.Unmarshal(bodyBytes, &webhook); err != nil {
 		return nil, fmt.Errorf("error decoding webhook: %w", err)
 	}
@@ -1119,7 +1099,7 @@ func (c *EmporixClient) UpdateWebhook(ctx context.Context, code string, patches 
 // DeleteWebhook deletes a webhook configuration by code
 func (c *EmporixClient) DeleteWebhook(ctx context.Context, code string) error {
 	path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
-	if c.ForceDelete || os.Getenv("EMPORIX_WEBHOOK_FORCE_DELETE") == "true" {
+	if os.Getenv("EMPORIX_WEBHOOK_FORCE_DELETE") == "true" {
 		path += "?force=true"
 	}
 

@@ -6,12 +6,14 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -71,8 +73,14 @@ func (r *WebhookResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Default:             booldefault.StaticBool(false),
 			},
 			"provider_type": schema.StringAttribute{
-				MarkdownDescription: "Webhook provider type. Accepted values are case-insensitive and dashes are converted to underscores for API requests.",
+				MarkdownDescription: "Webhook provider type. Accepted values are case-insensitive and dashes are converted to underscores for API requests. Valid values: `SVIX_SHARED`, `SVIX`, `HTTP`.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.OneOfCaseInsensitive("SVIX_SHARED", "SVIX", "HTTP"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"destination_url": schema.StringAttribute{
 				MarkdownDescription: "The URL where webhook events will be sent.",
@@ -164,7 +172,9 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 	// Pre-check: List existing webhooks to diagnose 409 conflicts and enforce active constraint
 	// This helps identify if the resource exists with a different case or is soft-deleted
 	existingWebhooks, listErr := r.client.ListWebhooks(ctx)
-	if listErr == nil {
+	if listErr != nil {
+		resp.Diagnostics.AddWarning("ListWebhooks failed", fmt.Sprintf("Unable to list existing webhooks, skipping active constraint check: %s", listErr))
+	} else {
 		// API requires at least one active webhook. If plan wants to create an inactive webhook
 		// and no other active webhooks exist, force active=true.
 		if plan.Active.ValueBool() == false {
@@ -176,6 +186,8 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 				}
 			}
 			if !anyActive {
+				resp.Diagnostics.AddWarning("Active constraint enforced",
+					fmt.Sprintf("Webhook '%s' was planned as inactive but no other active webhooks exist for tenant '%s'. The Emporix API requires at least one active webhook, so active has been set to true.", plan.Code.ValueString(), r.client.Tenant))
 				plan.Active = types.BoolValue(true)
 			}
 		}
@@ -269,7 +281,9 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	if !plan.Active.Equal(state.Active) && plan.Active.ValueBool() == false && state.Active.ValueBool() == true {
 		existingWebhooks, listErr := r.client.ListWebhooks(ctx)
-		if listErr == nil {
+		if listErr != nil {
+			resp.Diagnostics.AddWarning("ListWebhooks failed", fmt.Sprintf("Unable to list existing webhooks, skipping active constraint check: %s", listErr))
+		} else {
 			otherActiveCount := 0
 			for _, wh := range existingWebhooks {
 				if wh.Active && wh.Code != plan.Code.ValueString() {
