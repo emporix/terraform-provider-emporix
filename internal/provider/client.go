@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +44,23 @@ func getShippingZoneMutex(tenant string) *sync.Mutex {
 		shippingZoneMutexes[tenant] = &sync.Mutex{}
 	}
 	return shippingZoneMutexes[tenant]
+}
+
+// Global mutex map for per-tenant webhook operations
+var (
+	webhookMutexes     = make(map[string]*sync.Mutex)
+	webhookMutexesLock sync.Mutex
+)
+
+// getWebhookMutex returns the mutex for a specific tenant's webhook operations
+func getWebhookMutex(tenant string) *sync.Mutex {
+	webhookMutexesLock.Lock()
+	defer webhookMutexesLock.Unlock()
+
+	if _, exists := webhookMutexes[tenant]; !exists {
+		webhookMutexes[tenant] = &sync.Mutex{}
+	}
+	return webhookMutexes[tenant]
 }
 
 // Global mutex map for per-tenant shipping method operations
@@ -932,6 +950,172 @@ func (c *EmporixClient) DeleteTenantConfiguration(ctx context.Context, key strin
 	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ListWebhooks retrieves all webhook configurations for the tenant
+func (c *EmporixClient) ListWebhooks(ctx context.Context) ([]WebhookConfigGet, error) {
+	path := fmt.Sprintf("/webhook/%s/config", strings.ToLower(c.Tenant))
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return []WebhookConfigGet{}, nil
+	}
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var response WebhookListResponse
+	if err := json.Unmarshal(bodyBytes, &response); err != nil {
+		return nil, fmt.Errorf("error decoding webhook list response: %w", err)
+	}
+
+	return response.Configs, nil
+}
+
+// CreateWebhook creates a new webhook configuration.
+// The POST response returns a minimal ID response { "code": "svix" },
+// so a GET is performed afterward to fetch the full webhook state.
+func (c *EmporixClient) CreateWebhook(ctx context.Context, config *webhookCreateRequest) (*WebhookConfigGet, error) {
+	path := fmt.Sprintf("/webhook/%s/config", strings.ToLower(c.Tenant))
+
+	// POST to API
+	resp, err := c.doRequest(ctx, "POST", path, config, map[string]string{
+		"Content-Language": "*",
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		// Provide a more helpful error message for 409 Conflict (resource already exists)
+		if resp.StatusCode == http.StatusConflict {
+			return nil, fmt.Errorf("webhook configuration with code %q already exists. "+
+				"If this resource was previously managed by Terraform, import it with: "+
+				"`terraform import emporix_webhook.<resource_name> %s`. "+
+				"Otherwise, delete the existing webhook from the Emporix UI or API and try again. "+
+				"Error details: %s",
+				config.Code, config.Code, err)
+		}
+		return nil, err
+	}
+
+	// Parse the minimal ID response to extract the code for the subsequent GET.
+	var idResp struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(bodyBytes, &idResp); err != nil {
+		return nil, fmt.Errorf("error decoding webhook create response: %w", err)
+	}
+
+	// POST returns only { "code": "..." }; fetch the full state via GET.)
+	return c.GetWebhook(ctx, idResp.Code)
+}
+
+// GetWebhook retrieves a webhook configuration by code
+func (c *EmporixClient) GetWebhook(ctx context.Context, code string) (*WebhookConfigGet, error) {
+	path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var webhook WebhookConfigGet
+	if err := json.Unmarshal(bodyBytes, &webhook); err != nil {
+		return nil, fmt.Errorf("error decoding webhook: %w", err)
+	}
+
+	return &webhook, nil
+}
+
+// UpdateWebhook updates a webhook configuration using JSON Patch
+func (c *EmporixClient) UpdateWebhook(ctx context.Context, code string, patches []WebhookConfigPartialUpdates) (*WebhookConfigGet, error) {
+	path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
+
+	// PATCH to API
+	resp, err := c.doRequest(ctx, "PATCH", path, patches, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	// Accept both 200 OK (with response body) and 204 No Content (empty response)
+	if resp.StatusCode == http.StatusNoContent {
+		return nil, nil
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var webhook WebhookConfigGet
+	if err := json.Unmarshal(bodyBytes, &webhook); err != nil {
+		return nil, fmt.Errorf("error decoding webhook: %w", err)
+	}
+
+	return &webhook, nil
+}
+
+// DeleteWebhook deletes a webhook configuration by code
+func (c *EmporixClient) DeleteWebhook(ctx context.Context, code string) error {
+	path := fmt.Sprintf("/webhook/%s/config/%s", strings.ToLower(c.Tenant), code)
+	if os.Getenv("EMPORIX_WEBHOOK_FORCE_DELETE") == "true" {
+		path += "?force=true"
+	}
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	// API may return 200, 204, or 205 for successful deletion
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent, http.StatusAccepted); err != nil {
 		return err
 	}
 

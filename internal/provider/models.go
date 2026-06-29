@@ -238,3 +238,69 @@ type SchemaMetadataUpdate struct {
 type IdResponse struct {
 	ID string `json:"id"`
 }
+
+// HeaderFieldValue represents a header value wrapper for the Emporix API.
+// All header values must be wrapped in this struct with structure: {"value": "string"}
+type HeaderFieldValue struct {
+	Value string `json:"value"`
+}
+
+// EventConfig represents event-specific configuration for both read and write operations.
+// Headers must use HeaderFieldValue wrapper. SecretKeyExists is used only in read responses.
+type EventConfig struct {
+	EventType       string                      `json:"eventType"`
+	DestinationUrl  string                      `json:"destinationUrl,omitempty"`
+	SecretKey       string                      `json:"secretKey,omitempty"`
+	SecretKeyExists *bool                       `json:"secretKeyExists,omitempty"`
+	Headers         map[string]HeaderFieldValue `json:"headers,omitempty"`
+}
+
+// WebhookConfig contains provider-specific configuration returned by the GET API.
+type WebhookConfig struct {
+	DestinationUrl      string                      `json:"destinationUrl,omitempty"`
+	SecretKey           string                      `json:"secretKey,omitempty"`
+	SecretKeyExists     *bool                       `json:"secretKeyExists,omitempty"`
+	Headers             map[string]HeaderFieldValue `json:"headers,omitempty"`
+	EventsConfiguration []EventConfig               `json:"eventsConfiguration,omitempty"`
+}
+
+// WebhookConfigGet represents the response for a webhook configuration.
+type WebhookConfigGet struct {
+	Code          string         `json:"code"`
+	Active        bool           `json:"active"`
+	Provider      string         `json:"provider"`
+	Version       int            `json:"version"`
+	Configuration *WebhookConfig `json:"configuration,omitempty"`
+}
+
+// NestedConfigCreate represents the nested configuration object for webhook creation.
+// This contains provider-specific fields that the Emporix API expects.
+// - For HTTP provider: uses `SecretKey` (JSON: `secretKey`) for HMAC signing.
+// - For SVIX provider: uses `ApiKey` (JSON: `apiKey`) for Svix application secret.
+type NestedConfigCreate struct {
+	DestinationUrl      string                      `json:"destinationUrl,omitempty"`
+	SecretKey           string                      `json:"secretKey,omitempty"`
+	ApiKey              string                      `json:"apiKey,omitempty"`
+	Headers             map[string]HeaderFieldValue `json:"headers,omitempty"`
+	EventsConfiguration []EventConfig               `json:"eventsConfiguration,omitempty"`
+}
+
+// WebhookConfigPartialUpdates represents a JSON Patch operation for partial updates
+type WebhookConfigPartialUpdates struct {
+	Op    string      `json:"op"`
+	Path  string      `json:"path"`
+	Value interface{} `json:"value,omitempty"`
+}
+
+// WebhookListResponse represents the response for listing webhooks
+type WebhookListResponse struct {
+	Configs []WebhookConfigGet `json:"configs"`
+}
+
+// webhookCreateRequest is the creation payload for webhook configurations.
+type webhookCreateRequest struct {
+	Code          string              `json:"code"`
+	Active        bool                `json:"active"`
+	Provider      string              `json:"provider"`
+	Configuration *NestedConfigCreate `json:"configuration,omitempty"`
+}
