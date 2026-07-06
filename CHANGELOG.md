@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **New Resource: emporix_webhook** - Manage webhook configurations in Emporix
 
-[0.8.3]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.8.3
+[0.9.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.9.0
 
 ## [0.8.2] - 2026-04-08
 
