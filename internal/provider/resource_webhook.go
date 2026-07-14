@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -19,6 +20,7 @@ import (
 
 var _ resource.Resource = &WebhookResource{}
 var _ resource.ResourceWithImportState = &WebhookResource{}
+var _ resource.ResourceWithValidateConfig = &WebhookResource{}
 
 func NewWebhookResource() resource.Resource {
 	return &WebhookResource{}
@@ -33,6 +35,7 @@ type EventConfigModel struct {
 	DestinationUrl types.String            `tfsdk:"destination_url"`
 	SecretKey      types.String            `tfsdk:"secret_key"`
 	Headers        map[string]types.String `tfsdk:"headers"`
+	Subscribed     types.Bool              `tfsdk:"subscribed"`
 }
 
 type WebhookResourceModel struct {
@@ -45,6 +48,30 @@ type WebhookResourceModel struct {
 	Headers             map[string]types.String `tfsdk:"headers"`
 	EventsConfiguration []EventConfigModel      `tfsdk:"events_configuration"`
 	Version             types.Int64             `tfsdk:"version"`
+}
+
+type eventDestinationUrlDefaultModifier struct{}
+
+func (m eventDestinationUrlDefaultModifier) Description(ctx context.Context) string {
+	return "Defaults to the resource-level destination_url when this event does not set its own."
+}
+
+func (m eventDestinationUrlDefaultModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m eventDestinationUrlDefaultModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	if !req.ConfigValue.IsNull() {
+		return
+	}
+
+	var parentDestinationUrl types.String
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("destination_url"), &parentDestinationUrl)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.PlanValue = parentDestinationUrl
 }
 
 func (r *WebhookResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -116,6 +143,10 @@ func (r *WebhookResource) Schema(ctx context.Context, req resource.SchemaRequest
 						"destination_url": schema.StringAttribute{
 							MarkdownDescription: "Override destination URL for this specific event type. If empty, uses the parent destination_url.",
 							Optional:            true,
+							Computed:            true,
+							PlanModifiers: []planmodifier.String{
+								eventDestinationUrlDefaultModifier{},
+							},
 						},
 						"secret_key": schema.StringAttribute{
 							MarkdownDescription: "Override secret key for this specific event type. Omitted from state for Svix_SHARED provider.",
@@ -126,6 +157,12 @@ func (r *WebhookResource) Schema(ctx context.Context, req resource.SchemaRequest
 							MarkdownDescription: "HTTP headers to include for this specific event type.",
 							Optional:            true,
 							ElementType:         types.StringType,
+						},
+						"subscribed": schema.BoolAttribute{
+							MarkdownDescription: "Indicates whether the tenant is actually subscribed to this event type (controls actual message delivery, separately from the URL/headers overrides above). Defaults to true.",
+							Optional:            true,
+							Computed:            true,
+							Default:             booldefault.StaticBool(true),
 						},
 					},
 				},
@@ -221,6 +258,14 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 		result.EventsConfiguration = nil
 	}
 
+	if updates := buildEventSubscriptionUpdates(plan.EventsConfiguration, nil); len(updates) > 0 {
+		if err := r.client.UpdateEventSubscriptions(ctx, updates); err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Webhook was created, but failed to set event subscriptions: %s", err))
+			return
+		}
+	}
+	refreshEventSubscriptions(ctx, r.client, &result, &resp.Diagnostics)
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
 }
 
@@ -254,6 +299,8 @@ func (r *WebhookResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if len(result.EventsConfiguration) == 0 && len(state.EventsConfiguration) == 0 {
 		result.EventsConfiguration = nil
 	}
+
+	refreshEventSubscriptions(ctx, r.client, &result, &resp.Diagnostics)
 
 	if !state.Provider.IsNull() {
 		result.Provider = state.Provider
@@ -299,6 +346,15 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 				}
 				result := webhookToModel(current)
 				preserveTopLevelFields(&result, &state)
+
+				if updates := buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration); len(updates) > 0 {
+					if err := r.client.UpdateEventSubscriptions(ctx, updates); err != nil {
+						resp.Diagnostics.AddWarning("UpdateEventSubscriptions failed",
+							fmt.Sprintf("Unable to update event subscriptions: %s", err))
+					}
+				}
+				refreshEventSubscriptions(ctx, r.client, &result, &resp.Diagnostics)
+
 				result.Provider = types.StringValue(userProviderValue)
 				resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
 				return
@@ -312,6 +368,13 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	subscriptionUpdates := buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration)
+	if len(subscriptionUpdates) > 0 {
+		if err := r.client.UpdateEventSubscriptions(ctx, subscriptionUpdates); err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update event subscriptions: %s", err))
+			return
+		}
+	}
 	patches := buildPatchOperations(current, plan, state)
 
 	// Skip API call if no patches are needed (plan and state are identical).
@@ -325,6 +388,16 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 		result := webhookToModel(webhook)
 		preserveTopLevelFields(&result, &state)
+
+		subscriptionUpdates := buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration)
+		if len(subscriptionUpdates) > 0 {
+			if err := r.client.UpdateEventSubscriptions(ctx, subscriptionUpdates); err != nil {
+				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update event subscriptions: %s", err))
+				return
+			}
+		}
+		refreshEventSubscriptions(ctx, r.client, &result, &resp.Diagnostics)
+
 		result.Provider = types.StringValue(userProviderValue)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
 		return
@@ -355,6 +428,15 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 		result.EventsConfiguration = nil
 	}
 
+	subscriptionUpdates = buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration)
+	if len(subscriptionUpdates) > 0 {
+		if err := r.client.UpdateEventSubscriptions(ctx, subscriptionUpdates); err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update event subscriptions: %s", err))
+			return
+		}
+	}
+	refreshEventSubscriptions(ctx, r.client, &result, &resp.Diagnostics)
+
 	result.Provider = types.StringValue(userProviderValue)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
 }
@@ -376,6 +458,29 @@ func (r *WebhookResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 func (r *WebhookResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("code"), req, resp)
+}
+
+func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config WebhookResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	parentSet := !config.DestinationUrl.IsNull() && config.DestinationUrl.ValueString() != ""
+
+	for i, event := range config.EventsConfiguration {
+		eventSet := !event.DestinationUrl.IsNull() && event.DestinationUrl.ValueString() != ""
+		if !eventSet && !parentSet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("events_configuration").AtListIndex(i).AtName("destination_url"),
+				"Missing destination_url",
+				fmt.Sprintf("events_configuration[%d] (event_type %q) has no destination_url, and the resource-level "+
+					"destination_url is also not set. The Emporix API requires a destination URL for every event; "+
+					"set one on this event or on the parent destination_url.", i, event.EventType.ValueString()),
+			)
+		}
+	}
 }
 
 // ============================================================================
@@ -562,19 +667,35 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 	}
 
 	if !reflect.DeepEqual(plan.Headers, state.Headers) {
-		patches = append(patches, WebhookConfigPartialUpdates{
-			Op:    "UPSERT",
-			Path:  configPrefix + "/headers",
-			Value: buildHeaderFieldValueMapFromModel(plan.Headers),
-		})
+		headersPath := configPrefix + "/headers"
+		if len(plan.Headers) == 0 {
+			patches = append(patches, WebhookConfigPartialUpdates{
+				Op:   "REMOVE",
+				Path: headersPath,
+			})
+		} else {
+			patches = append(patches, WebhookConfigPartialUpdates{
+				Op:    "UPSERT",
+				Path:  headersPath,
+				Value: buildHeaderFieldValueMapFromModel(plan.Headers),
+			})
+		}
 	}
 
 	if !reflect.DeepEqual(plan.EventsConfiguration, state.EventsConfiguration) {
-		patches = append(patches, WebhookConfigPartialUpdates{
-			Op:    "UPSERT",
-			Path:  configPrefix + "/eventsConfiguration",
-			Value: buildEventConfigNestedFromModel(plan.EventsConfiguration),
-		})
+		eventsPath := configPrefix + "/eventsConfiguration"
+		if len(plan.EventsConfiguration) == 0 {
+			patches = append(patches, WebhookConfigPartialUpdates{
+				Op:   "REMOVE",
+				Path: eventsPath,
+			})
+		} else {
+			patches = append(patches, WebhookConfigPartialUpdates{
+				Op:    "UPSERT",
+				Path:  eventsPath,
+				Value: buildEventConfigNestedFromModel(plan.EventsConfiguration),
+			})
+		}
 	}
 
 	return patches
@@ -632,6 +753,9 @@ func mergeEventsFromSource(result *[]EventConfigModel, source []EventConfigModel
 			if (*result)[i].DestinationUrl.IsNull() && !srcEvent.DestinationUrl.IsNull() {
 				(*result)[i].DestinationUrl = srcEvent.DestinationUrl
 			}
+			if (*result)[i].Subscribed.IsNull() && !srcEvent.Subscribed.IsNull() {
+				(*result)[i].Subscribed = srcEvent.Subscribed
+			}
 		}
 	}
 }
@@ -661,4 +785,69 @@ func reorderEventsToMatch(result *[]EventConfigModel, reference []EventConfigMod
 		}
 	}
 	*result = reordered
+}
+
+func refreshEventSubscriptions(ctx context.Context, client *EmporixClient, result *WebhookResourceModel, diags *diag.Diagnostics) {
+	if len(result.EventsConfiguration) == 0 {
+		return
+	}
+	entries, err := client.ListEventSubscriptions(ctx)
+	if err != nil {
+		diags.AddWarning("ListEventSubscriptions failed",
+			fmt.Sprintf("Failed to refresh subscription status: %s", err))
+		return
+	}
+	applyCurrentSubscriptions(result.EventsConfiguration, subscriptionStatusMap(entries))
+}
+
+func subscriptionStatusMap(entries []WebhookEventSubscriptionEntry) map[string]string {
+	m := make(map[string]string, len(entries))
+	for _, e := range entries {
+		m[e.Event.Type] = e.Subscription
+	}
+	return m
+}
+
+func applyCurrentSubscriptions(events []EventConfigModel, statuses map[string]string) {
+	for i := range events {
+		status, ok := statuses[events[i].EventType.ValueString()]
+		events[i].Subscribed = types.BoolValue(ok && status == "SUBSCRIBED")
+	}
+}
+
+func buildEventSubscriptionUpdates(plan, state []EventConfigModel) []WebhookEventSubscriptionUpdate {
+	stateByType := make(map[string]EventConfigModel, len(state))
+	for _, e := range state {
+		stateByType[e.EventType.ValueString()] = e
+	}
+	planByType := make(map[string]struct{}, len(plan))
+
+	var updates []WebhookEventSubscriptionUpdate
+	for _, p := range plan {
+		eventType := p.EventType.ValueString()
+		planByType[eventType] = struct{}{}
+		wantSubscribed := p.Subscribed.IsNull() || p.Subscribed.ValueBool()
+		prev, existed := stateByType[eventType]
+		hadSubscribed := existed && (prev.Subscribed.IsNull() || prev.Subscribed.ValueBool())
+		if !existed || wantSubscribed != hadSubscribed {
+			action := "UNSUBSCRIBE"
+			if wantSubscribed {
+				action = "SUBSCRIBE"
+			}
+			updates = append(updates, WebhookEventSubscriptionUpdate{EventType: eventType, Action: action})
+		}
+	}
+
+	for _, s := range state {
+		eventType := s.EventType.ValueString()
+		if _, stillPlanned := planByType[eventType]; stillPlanned {
+			continue
+		}
+		hadSubscribed := s.Subscribed.IsNull() || s.Subscribed.ValueBool()
+		if hadSubscribed {
+			updates = append(updates, WebhookEventSubscriptionUpdate{EventType: eventType, Action: "UNSUBSCRIBE"})
+		}
+	}
+
+	return updates
 }

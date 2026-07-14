@@ -3,7 +3,7 @@
 Manages a webhook subscription configuration in Emporix. Webhooks support three providers: `SVIX_SHARED` (default Emporix Svix server), `SVIX` (your own Svix server), and `HTTP` (direct HTTP POST). Each webhook configuration defines where events should be sent and how they are authenticated.
 
 **Important:** The Emporix API requires at least one active webhook configuration per tenant. If you attempt to deactivate the last active webhook, the API will enforce `active = true`.
-Also, only one configuration of given type is alloved. When you try to add more than one configuration of gicen type, you will get 409 error from API.
+Also, only one configuration of given type is allowed. When you try to add more than one configuration of given type, you will get 409 error from API.
 
 ## Example Usage
 
@@ -177,6 +177,16 @@ Updates to webhook configurations use JSON Patch (RFC 6902) operations. The prov
 Secret keys and headers are carefully preserved during read operations:
 - If the API doesn't return sensitive values, the provider falls back to the planned or state values.
 - The `secret_key` attribute is marked as `Sensitive` in the schema to prevent exposure in logs.
+
+### Event Subscription Management
+
+When you add events to `events_configuration`, they are automatically subscribed on the Emporix API side:
+- Adding an event automatically issues a `SUBSCRIBE` request to the API
+- Removing an event from `events_configuration` automatically issues an `UNSUBSCRIBE` request, stopping that event type from being delivered
+- Removing the entire `events_configuration` block automatically unsubscribes all previously subscribed event types
+- Subscription status is tracked and synchronized with the API during each `terraform plan` and `terraform apply`
+
+This ensures your Terraform configuration always reflects the actual subscription state on the API, preventing drift between declared events and actual event delivery.
 
 ### Event Configuration Merging
 
