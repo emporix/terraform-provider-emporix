@@ -116,6 +116,7 @@ Optional:
 - `destination_url` (String) Override destination URL for this specific event type. If empty, uses the parent `destination_url`.
 - `secret_key` (String, Sensitive) Override secret key for this specific event type. Omitted from state for `SVIX_SHARED` provider.
 - `headers` (Map of String) HTTP headers to include for this specific event type.
+- `subscribed` (Boolean) Whether the tenant is actually subscribed to this event type, controlling actual message delivery separately from the URL/headers overrides above. Defaults to `true`. Set to `false` to keep an event's configuration (destination URL, headers, secret key) in place while temporarily disabling delivery, without having to remove the whole `events_configuration` entry.
 
 ## Provider Types
 
@@ -187,6 +188,11 @@ When you add events to `events_configuration`, they are automatically subscribed
 - Subscription status is tracked and synchronized with the API during each `terraform plan` and `terraform apply`
 
 This ensures your Terraform configuration always reflects the actual subscription state on the API, preventing drift between declared events and actual event delivery.
+
+The nested `subscribed` attribute exposes this status directly and lets you control it intentionally:
+- It defaults to `true`, so any event listed in `events_configuration` is subscribed unless stated otherwise.
+- Set `subscribed = false` on an event to unsubscribe it while keeping its `destination_url`, `headers`, and `secret_key` overrides configured in Terraform. This is different from removing the event from `events_configuration` entirely, which discards that configuration.
+- The attribute is also `Computed`, so it reflects the real subscription status read back from the API (e.g., if it was changed outside of Terraform), and will show up as drift on the next `plan`/`apply` if it doesn't match your configuration.
 
 ### Event Configuration Merging
 

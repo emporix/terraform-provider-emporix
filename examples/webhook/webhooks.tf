@@ -94,6 +94,7 @@ resource "emporix_webhook" "multi_event_webhook" {
     {
       event_type      = "product.updated"
       destination_url = "<URL>"
+      subscribed = false
     }
   ]
 }

@@ -271,8 +271,10 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 
 	if updates := buildEventSubscriptionUpdates(plan.EventsConfiguration, nil); len(updates) > 0 {
 		if err := r.client.UpdateEventSubscriptions(ctx, updates); err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Webhook was created, but failed to set event subscriptions: %s", err))
-			return
+			resp.Diagnostics.AddWarning("Event subscriptions not fully applied",
+				fmt.Sprintf("Webhook '%s' was created, but failed to set event subscriptions: %s. "+
+					"The webhook has been saved to state; re-run apply to reconcile subscriptions.",
+					plan.Code.ValueString(), err))
 		}
 	}
 	refreshEventSubscriptions(ctx, r.client, &result, &resp.Diagnostics)
@@ -396,8 +398,8 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 		subscriptionUpdates := buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration)
 		if len(subscriptionUpdates) > 0 {
 			if err := r.client.UpdateEventSubscriptions(ctx, subscriptionUpdates); err != nil {
-				resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update event subscriptions: %s", err))
-				return
+				resp.Diagnostics.AddWarning("UpdateEventSubscriptions failed",
+					fmt.Sprintf("Unable to update event subscriptions: %s", err))
 			}
 		}
 		refreshEventSubscriptions(ctx, r.client, &result, &resp.Diagnostics)
@@ -435,8 +437,8 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 	subscriptionUpdates := buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration)
 	if len(subscriptionUpdates) > 0 {
 		if err := r.client.UpdateEventSubscriptions(ctx, subscriptionUpdates); err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update event subscriptions: %s", err))
-			return
+			resp.Diagnostics.AddWarning("UpdateEventSubscriptions failed",
+				fmt.Sprintf("Unable to update event subscriptions: %s", err))
 		}
 	}
 	refreshEventSubscriptions(ctx, r.client, &result, &resp.Diagnostics)
@@ -830,9 +832,23 @@ func buildEventSubscriptionUpdates(plan, state []EventConfigModel) []WebhookEven
 	for _, p := range plan {
 		eventType := p.EventType.ValueString()
 		planByType[eventType] = struct{}{}
-		wantSubscribed := p.Subscribed.IsNull() || p.Subscribed.ValueBool()
 		prev, existed := stateByType[eventType]
 		hadSubscribed := existed && (prev.Subscribed.IsNull() || prev.Subscribed.ValueBool())
+
+		var wantSubscribed bool
+		switch {
+		case p.Subscribed.IsUnknown():
+			if existed {
+				wantSubscribed = hadSubscribed
+			} else {
+				wantSubscribed = true
+			}
+		case p.Subscribed.IsNull():
+			wantSubscribed = true
+		default:
+			wantSubscribed = p.Subscribed.ValueBool()
+		}
+
 		if !existed || wantSubscribed != hadSubscribed {
 			action := "UNSUBSCRIBE"
 			if wantSubscribed {

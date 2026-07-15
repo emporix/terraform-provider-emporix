@@ -283,6 +283,81 @@ resource "emporix_webhook" "test" {
 	})
 }
 
+func TestAccWebhookResource_subscribedToggle(t *testing.T) {
+	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
+	t.Cleanup(func() {
+		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
+	})
+
+	code := "test_webhook_subscribed_toggle"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckWebhookDestroy,
+		Steps: []resource.TestStep{
+			// Step 1: create with 2 events, both implicitly subscribed (default true).
+			{
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, `"<URL>"`, true,
+					[]testEventConfig{
+						{EventType: "order.created", DestinationUrl: "<URL>"},
+						{EventType: "customer.created", DestinationUrl: "<URL>"},
+					}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "2"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.0.subscribed", "true"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.1.subscribed", "true"),
+					testAccCheckWebhookEventsConfigurationCount(code, 2),
+					testAccCheckEventSubscriptionStatus(
+						[]string{"order.created", "customer.created"},
+						nil,
+					),
+				),
+			},
+			// Step 2: set subscribed = false on "order.created" while keeping its
+			// destination_url configured. This must unsubscribe the event on the API
+			// side (via UNSUBSCRIBE) WITHOUT removing its events_configuration entry -
+			// unlike dropping the event entirely, the override configuration stays intact.
+			{
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, `"<URL>"`, true,
+					[]testEventConfig{
+						{EventType: "order.created", DestinationUrl: "<URL>", Subscribed: boolPtr(false)},
+						{EventType: "customer.created", DestinationUrl: "<URL>"},
+					}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "2"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.0.subscribed", "false"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.1.subscribed", "true"),
+					testAccCheckWebhookEventsConfigurationCount(code, 2),
+					testAccCheckEventDestinationUrl(code, "order.created", "<URL>"),
+					testAccCheckEventSubscriptionStatus(
+						[]string{"customer.created"},
+						[]string{"order.created"},
+					),
+				),
+			},
+			// Step 3: re-subscribe "order.created" by setting subscribed back to true.
+			{
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, `"<URL>"`, true,
+					[]testEventConfig{
+						{EventType: "order.created", DestinationUrl: "<URL>", Subscribed: boolPtr(true)},
+						{EventType: "customer.created", DestinationUrl: "<URL>"},
+					}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "2"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.0.subscribed", "true"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.1.subscribed", "true"),
+					testAccCheckWebhookEventsConfigurationCount(code, 2),
+					testAccCheckEventSubscriptionStatus(
+						[]string{"order.created", "customer.created"},
+						nil,
+					),
+				),
+			},
+		},
+	})
+}
+
 func TestAccWebhookResource_requiresReplace(t *testing.T) {
 	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
 	t.Cleanup(func() {
@@ -312,10 +387,15 @@ func TestAccWebhookResource_requiresReplace(t *testing.T) {
 	})
 }
 
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 // testEventConfig is a helper type for test config generation (NOT the API model)
 type testEventConfig struct {
 	EventType      string
 	DestinationUrl string
+	Subscribed     *bool
 }
 
 // testAccWebhookResourceConfig generates a webhook resource config
@@ -365,18 +445,18 @@ func testAccWebhookResourceConfigWithEvents(code, provider, destinationUrl strin
 			if i > 0 {
 				eventsBlock += `,`
 			}
+			destinationUrlLine := ""
 			if event.DestinationUrl != "" {
-				eventsBlock += fmt.Sprintf(`
-    {
-      event_type      = %q
-      destination_url = %q
-    }`, event.EventType, event.DestinationUrl)
-			} else {
-				eventsBlock += fmt.Sprintf(`
-    {
-      event_type = %q
-    }`, event.EventType)
+				destinationUrlLine = fmt.Sprintf("\n      destination_url = %q", event.DestinationUrl)
 			}
+			subscribedLine := ""
+			if event.Subscribed != nil {
+				subscribedLine = fmt.Sprintf("\n      subscribed = %t", *event.Subscribed)
+			}
+			eventsBlock += fmt.Sprintf(`
+    {
+      event_type = %q%s%s
+    }`, event.EventType, destinationUrlLine, subscribedLine)
 		}
 		eventsBlock += `]`
 	}
@@ -392,8 +472,7 @@ resource "emporix_webhook" "test" {
 `, code, provider, destinationUrl, active, eventsBlock)
 }
 
-// testAccCheckWebhookEventsConfigurationCount verifies, directly against the API (not
-// Terraform state), how many events_configuration entries the webhook actually has.
+// testAccCheckWebhookEventsConfigurationCount verifies, directly against the API (not Terraform state)
 func testAccCheckWebhookEventsConfigurationCount(code string, want int) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		client, err := getTestClient()
