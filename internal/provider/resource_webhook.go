@@ -12,6 +12,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -61,7 +63,10 @@ func (m eventDestinationUrlDefaultModifier) MarkdownDescription(ctx context.Cont
 }
 
 func (m eventDestinationUrlDefaultModifier) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
-	if !req.ConfigValue.IsNull() {
+	if req.ConfigValue.IsUnknown() {
+		return
+	}
+	if !req.ConfigValue.IsNull() && req.ConfigValue.ValueString() != "" {
 		return
 	}
 
@@ -121,6 +126,9 @@ func (r *WebhookResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"secret_key_exists": schema.BoolAttribute{
 				MarkdownDescription: "Whether a secret key exists for this webhook (read-only, computed by API). Useful for Svix provider to know if signing is configured.",
 				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"headers": schema.MapAttribute{
 				MarkdownDescription: "HTTP headers to include in webhook requests. Keys and values are strings.",
@@ -130,6 +138,9 @@ func (r *WebhookResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"version": schema.Int64Attribute{
 				MarkdownDescription: "Webhook configuration version (managed by API for optimistic concurrency).",
 				Computed:            true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"events_configuration": schema.ListNestedAttribute{
 				MarkdownDescription: "Event-specific configuration. Allows different handling for different event types.",
@@ -368,13 +379,6 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	subscriptionUpdates := buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration)
-	if len(subscriptionUpdates) > 0 {
-		if err := r.client.UpdateEventSubscriptions(ctx, subscriptionUpdates); err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update event subscriptions: %s", err))
-			return
-		}
-	}
 	patches := buildPatchOperations(current, plan, state)
 
 	// Skip API call if no patches are needed (plan and state are identical).
@@ -428,7 +432,7 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 		result.EventsConfiguration = nil
 	}
 
-	subscriptionUpdates = buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration)
+	subscriptionUpdates := buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration)
 	if len(subscriptionUpdates) > 0 {
 		if err := r.client.UpdateEventSubscriptions(ctx, subscriptionUpdates); err != nil {
 			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update event subscriptions: %s", err))
@@ -467,10 +471,10 @@ func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.Valid
 		return
 	}
 
-	parentSet := !config.DestinationUrl.IsNull() && config.DestinationUrl.ValueString() != ""
+	parentSet := config.DestinationUrl.IsUnknown() || (!config.DestinationUrl.IsNull() && config.DestinationUrl.ValueString() != "")
 
 	for i, event := range config.EventsConfiguration {
-		eventSet := !event.DestinationUrl.IsNull() && event.DestinationUrl.ValueString() != ""
+		eventSet := event.DestinationUrl.IsUnknown() || (!event.DestinationUrl.IsNull() && event.DestinationUrl.ValueString() != "")
 		if !eventSet && !parentSet {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("events_configuration").AtListIndex(i).AtName("destination_url"),

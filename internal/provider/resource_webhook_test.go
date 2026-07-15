@@ -224,6 +224,65 @@ func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
 	})
 }
 
+func TestAccWebhookResource_eventDestinationUrlFallback(t *testing.T) {
+	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
+	t.Cleanup(func() {
+		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
+	})
+
+	code := "test_webhook_dest_url_fallback"
+	parentUrl := "<URL>"
+	overrideUrl := "<URL_2>"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckWebhookDestroy,
+		Steps: []resource.TestStep{
+			// Step 1: one event omits destination_url entirely and must fall back to the
+			// parent destination_url, both in state and on the API side. A second event
+			// with an explicit override must keep its own value.
+			{
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", parentUrl), true,
+					[]testEventConfig{
+						{EventType: "order.created", DestinationUrl: ""},
+						{EventType: "customer.created", DestinationUrl: overrideUrl},
+					}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.0.destination_url", parentUrl),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.1.destination_url", overrideUrl),
+					testAccCheckEventDestinationUrl(code, "order.created", parentUrl),
+					testAccCheckEventDestinationUrl(code, "customer.created", overrideUrl),
+				),
+			},
+			// Step 2: an event that explicitly sets destination_url = "" must also fall
+			// back to the parent, instead of sending a blank value to the API (which the
+			// API rejects with "destinationUrl must not be blank").
+			{
+				Config: fmt.Sprintf(`
+resource "emporix_webhook" "test" {
+  code             = %q
+  provider_type    = "HTTP"
+  destination_url  = %q
+  active           = true
+
+  events_configuration = [
+    {
+      event_type      = "order.created"
+      destination_url = ""
+    }
+  ]
+}
+`, code, parentUrl),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.0.destination_url", parentUrl),
+					testAccCheckEventDestinationUrl(code, "order.created", parentUrl),
+				),
+			},
+		},
+	})
+}
+
 func TestAccWebhookResource_requiresReplace(t *testing.T) {
 	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
 	t.Cleanup(func() {
@@ -389,6 +448,35 @@ func testAccCheckEventSubscriptionStatus(wantSubscribed, wantNotSubscribed []str
 			}
 		}
 		return nil
+	}
+}
+
+// testAccCheckEventDestinationUrl verifies, directly against the API (not Terraform state)
+func testAccCheckEventDestinationUrl(code, eventType, want string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		client, err := getTestClient()
+		if err != nil {
+			return fmt.Errorf("failed to get test client: %w", err)
+		}
+
+		webhook, err := client.GetWebhook(context.Background(), code)
+		if err != nil {
+			return fmt.Errorf("failed to get webhook %q: %w", code, err)
+		}
+
+		if webhook.Configuration == nil {
+			return fmt.Errorf("webhook %q: configuration is nil", code)
+		}
+
+		for _, event := range webhook.Configuration.EventsConfiguration {
+			if event.EventType == eventType {
+				if event.DestinationUrl != want {
+					return fmt.Errorf("webhook %q: event %q destinationUrl = %q, want %q", code, eventType, event.DestinationUrl, want)
+				}
+				return nil
+			}
+		}
+		return fmt.Errorf("webhook %q: event %q not found in API configuration", code, eventType)
 	}
 }
 

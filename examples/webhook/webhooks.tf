@@ -78,7 +78,6 @@ resource "emporix_webhook" "multi_event_webhook" {
   events_configuration = [
     {
       event_type      = "order.created"
-      destination_url = "<URL>"
       secret_key      = "orders-secret-key"
       headers = {
         X-Event-Group = "orders"
