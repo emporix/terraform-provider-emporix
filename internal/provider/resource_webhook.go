@@ -473,6 +473,10 @@ func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.Valid
 		return
 	}
 
+	if normalizeProvider(config.Provider.ValueString()) != "HTTP" {
+		return
+	}
+
 	parentSet := config.DestinationUrl.IsUnknown() || (!config.DestinationUrl.IsNull() && config.DestinationUrl.ValueString() != "")
 
 	for i, event := range config.EventsConfiguration {
@@ -688,7 +692,9 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 		}
 	}
 
-	if !reflect.DeepEqual(plan.EventsConfiguration, state.EventsConfiguration) {
+	planEvents := buildEventConfigNestedFromModel(plan.EventsConfiguration)
+	stateEvents := buildEventConfigNestedFromModel(state.EventsConfiguration)
+	if !reflect.DeepEqual(planEvents, stateEvents) {
 		eventsPath := configPrefix + "/eventsConfiguration"
 		if len(plan.EventsConfiguration) == 0 {
 			patches = append(patches, WebhookConfigPartialUpdates{
@@ -699,7 +705,7 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 			patches = append(patches, WebhookConfigPartialUpdates{
 				Op:    "UPSERT",
 				Path:  eventsPath,
-				Value: buildEventConfigNestedFromModel(plan.EventsConfiguration),
+				Value: planEvents,
 			})
 		}
 	}

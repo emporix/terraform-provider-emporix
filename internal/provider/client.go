@@ -1160,7 +1160,8 @@ func (c *EmporixClient) UpdateEventSubscriptions(ctx context.Context, updates []
 	if readErr != nil {
 		return fmt.Errorf("error reading response body: %w", readErr)
 	}
-	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusMultiStatus); err != nil {
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusMultiStatus); err != nil {
 		return err
 	}
 
