@@ -23,6 +23,7 @@ import (
 var _ resource.Resource = &WebhookResource{}
 var _ resource.ResourceWithImportState = &WebhookResource{}
 var _ resource.ResourceWithValidateConfig = &WebhookResource{}
+var _ resource.ResourceWithModifyPlan = &WebhookResource{}
 
 func NewWebhookResource() resource.Resource {
 	return &WebhookResource{}
@@ -217,30 +218,6 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Pre-check: List existing webhooks to diagnose 409 conflicts and enforce active constraint
-	// This helps identify if the resource exists with a different case or is soft-deleted
-	existingWebhooks, listErr := r.client.ListWebhooks(ctx)
-	if listErr != nil {
-		resp.Diagnostics.AddWarning("ListWebhooks failed", fmt.Sprintf("Unable to list existing webhooks, skipping active constraint check: %s", listErr))
-	} else {
-		// API requires at least one active webhook. If plan wants to create an inactive webhook
-		// and no other active webhooks exist, force active=true.
-		if plan.Active.ValueBool() == false {
-			anyActive := false
-			for _, wh := range existingWebhooks {
-				if wh.Active {
-					anyActive = true
-					break
-				}
-			}
-			if !anyActive {
-				resp.Diagnostics.AddWarning("Active constraint enforced",
-					fmt.Sprintf("Webhook '%s' was planned as inactive but no other active webhooks exist for tenant '%s'. The Emporix API requires at least one active webhook, so active has been set to true.", plan.Code.ValueString(), r.client.Tenant))
-				plan.Active = types.BoolValue(true)
-			}
-		}
-	}
-
 	nestedConfig := buildNestedConfigFromModel(plan, userProviderValue)
 	createReq := &webhookCreateRequest{
 		Code:          plan.Code.ValueString(),
@@ -339,42 +316,6 @@ func (r *WebhookResource) Update(ctx context.Context, req resource.UpdateRequest
 	mu.Lock()
 	defer mu.Unlock()
 
-	if !plan.Active.Equal(state.Active) && plan.Active.ValueBool() == false && state.Active.ValueBool() == true {
-		existingWebhooks, listErr := r.client.ListWebhooks(ctx)
-		if listErr != nil {
-			resp.Diagnostics.AddWarning("ListWebhooks failed", fmt.Sprintf("Unable to list existing webhooks, skipping active constraint check: %s", listErr))
-		} else {
-			otherActiveCount := 0
-			for _, wh := range existingWebhooks {
-				if wh.Active && wh.Code != plan.Code.ValueString() {
-					otherActiveCount++
-				}
-			}
-			if otherActiveCount == 0 {
-				// Read current state to update version/other computed fields
-				current, err := r.client.GetWebhook(ctx, plan.Code.ValueString())
-				if err != nil {
-					resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read current webhook state, got error: %s", err))
-					return
-				}
-				result := webhookToModel(current)
-				preserveTopLevelFields(&result, &state)
-
-				if updates := buildEventSubscriptionUpdates(plan.EventsConfiguration, state.EventsConfiguration); len(updates) > 0 {
-					if err := r.client.UpdateEventSubscriptions(ctx, updates); err != nil {
-						resp.Diagnostics.AddWarning("UpdateEventSubscriptions failed",
-							fmt.Sprintf("Unable to update event subscriptions: %s", err))
-					}
-				}
-				refreshEventSubscriptions(ctx, r.client, &result, &resp.Diagnostics)
-
-				result.Provider = types.StringValue(userProviderValue)
-				resp.Diagnostics.Append(resp.State.Set(ctx, &result)...)
-				return
-			}
-		}
-	}
-
 	current, err := r.client.GetWebhook(ctx, plan.Code.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read current webhook state, got error: %s", err))
@@ -454,6 +395,10 @@ func (r *WebhookResource) Delete(ctx context.Context, req resource.DeleteRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	mu := getWebhookMutex(r.client.Tenant)
+	mu.Lock()
+	defer mu.Unlock()
 
 	err := r.client.DeleteWebhook(ctx, state.Code.ValueString())
 	if err != nil {
