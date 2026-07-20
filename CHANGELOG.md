@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `secret_key_exists` and `version` no longer show as `(known after apply)` on every update; unrelated changes no longer produce a non-empty plan on the next `apply`
   - a failed event-subscription update no longer aborts the resource `Create`/`Update` after the underlying webhook was already created/updated, which could leave the resource out of Terraform state or apply outdated state
 
+[0.9.1]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.9.1
+
 ## [0.9.0] - 2026-07-06
 
 ### Added
