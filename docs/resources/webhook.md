@@ -3,7 +3,7 @@
 Manages a webhook subscription configuration in Emporix. Webhooks support three providers: `SVIX_SHARED` (default Emporix Svix server), `SVIX` (your own Svix server), and `HTTP` (direct HTTP POST). Each webhook configuration defines where events should be sent and how they are authenticated.
 
 **Important:** The Emporix API requires at least one active webhook configuration per tenant. If you attempt to deactivate the last active webhook, the API will enforce `active = true`.
-Also, only one configuration of given type is alloved. When you try to add more than one configuration of gicen type, you will get 409 error from API.
+Also, only one configuration of given type is allowed. When you try to add more than one configuration of given type, you will get 409 error from API.
 
 ## Example Usage
 
@@ -116,6 +116,7 @@ Optional:
 - `destination_url` (String) Override destination URL for this specific event type. If empty, uses the parent `destination_url`.
 - `secret_key` (String, Sensitive) Override secret key for this specific event type. Omitted from state for `SVIX_SHARED` provider.
 - `headers` (Map of String) HTTP headers to include for this specific event type.
+- `subscribed` (Boolean) Whether the tenant is actually subscribed to this event type, controlling actual message delivery separately from the URL/headers overrides above. Defaults to `true`. Set to `false` to keep an event's configuration (destination URL, headers, secret key) in place while temporarily disabling delivery, without having to remove the whole `events_configuration` entry.
 
 ## Provider Types
 
@@ -177,6 +178,21 @@ Updates to webhook configurations use JSON Patch (RFC 6902) operations. The prov
 Secret keys and headers are carefully preserved during read operations:
 - If the API doesn't return sensitive values, the provider falls back to the planned or state values.
 - The `secret_key` attribute is marked as `Sensitive` in the schema to prevent exposure in logs.
+
+### Event Subscription Management
+
+When you add events to `events_configuration`, they are automatically subscribed on the Emporix API side:
+- Adding an event automatically issues a `SUBSCRIBE` request to the API
+- Removing an event from `events_configuration` automatically issues an `UNSUBSCRIBE` request, stopping that event type from being delivered
+- Removing the entire `events_configuration` block automatically unsubscribes all previously subscribed event types
+- Subscription status is tracked and synchronized with the API during each `terraform plan` and `terraform apply`
+
+This ensures your Terraform configuration always reflects the actual subscription state on the API, preventing drift between declared events and actual event delivery.
+
+The nested `subscribed` attribute exposes this status directly and lets you control it intentionally:
+- It defaults to `true`, so any event listed in `events_configuration` is subscribed unless stated otherwise.
+- Set `subscribed = false` on an event to unsubscribe it while keeping its `destination_url`, `headers`, and `secret_key` overrides configured in Terraform. This is different from removing the event from `events_configuration` entirely, which discards that configuration.
+- The attribute is also `Computed`, so it reflects the real subscription status read back from the API (e.g., if it was changed outside of Terraform), and will show up as drift on the next `plan`/`apply` if it doesn't match your configuration.
 
 ### Event Configuration Merging
 

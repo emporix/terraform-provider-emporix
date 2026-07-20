@@ -78,7 +78,6 @@ resource "emporix_webhook" "multi_event_webhook" {
   events_configuration = [
     {
       event_type      = "order.created"
-      destination_url = "<URL>"
       secret_key      = "orders-secret-key"
       headers = {
         X-Event-Group = "orders"
@@ -95,6 +94,7 @@ resource "emporix_webhook" "multi_event_webhook" {
     {
       event_type      = "product.updated"
       destination_url = "<URL>"
+      subscribed = false
     }
   ]
 }

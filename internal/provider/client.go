@@ -1122,6 +1122,65 @@ func (c *EmporixClient) DeleteWebhook(ctx context.Context, code string) error {
 	return nil
 }
 
+func (c *EmporixClient) ListEventSubscriptions(ctx context.Context) ([]WebhookEventSubscriptionEntry, error) {
+	path := fmt.Sprintf("/webhook/%s/event-subscriptions", strings.ToLower(c.Tenant))
+	resp, err := c.doRequest(ctx, "GET", path, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var entries []WebhookEventSubscriptionEntry
+	if err := json.Unmarshal(bodyBytes, &entries); err != nil {
+		return nil, fmt.Errorf("error decoding event subscriptions: %w", err)
+	}
+	return entries, nil
+}
+
+func (c *EmporixClient) UpdateEventSubscriptions(ctx context.Context, updates []WebhookEventSubscriptionUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	path := fmt.Sprintf("/webhook/%s/event-subscriptions", strings.ToLower(c.Tenant))
+	resp, err := c.doRequest(ctx, "PATCH", path, updates, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusMultiStatus); err != nil {
+		return err
+	}
+
+	var results []WebhookEventSubscriptionUpdateResult
+	if err := json.Unmarshal(bodyBytes, &results); err != nil {
+		return fmt.Errorf("error decoding event subscription update response: %w", err)
+	}
+	var failures []string
+	for _, r := range results {
+		if r.Code >= 300 {
+			failures = append(failures, fmt.Sprintf("%s: %s (%d)", r.EventType, r.Message, r.Code))
+		}
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("failed to update event subscriptions: %s", strings.Join(failures, "; "))
+	}
+	return nil
+}
+
 // CreateShippingZone creates a new shipping zone
 func (c *EmporixClient) CreateShippingZone(ctx context.Context, site string, zone *ShippingZone) (*ShippingZone, error) {
 	// Lock for this tenant's shipping zone operations

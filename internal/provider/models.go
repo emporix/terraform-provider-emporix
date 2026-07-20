@@ -304,3 +304,22 @@ type webhookCreateRequest struct {
 	Provider      string              `json:"provider"`
 	Configuration *NestedConfigCreate `json:"configuration,omitempty"`
 }
+
+type WebhookEventSubscriptionEntry struct {
+	Event struct {
+		Type string `json:"type"`
+	} `json:"event"`
+	Subscription string `json:"subscription"` // SUBSCRIBED | UNSUBSCRIBED | NONE
+}
+
+type WebhookEventSubscriptionUpdate struct {
+	EventType string `json:"eventType"`
+	Action    string `json:"action"` // SUBSCRIBE | UNSUBSCRIBE
+}
+
+type WebhookEventSubscriptionUpdateResult struct {
+	EventType string `json:"eventType"`
+	Code      int    `json:"code"`
+	Status    string `json:"status"`
+	Message   string `json:"message,omitempty"`
+}

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-07-20
+
+### Added
+
+- **emporix_webhook**
+  - `events_configuration.subscribed` field to intentionally subscribe/unsubscribe an event type while keeping its `destination_url`/`secret_key`/`headers` overrides configured
+
+### Fixes
+
+- **emporix_webhook**
+  - fixed "inconsistent values for sensitive attribute" error by unconditionally refreshing event subscription status from the API on every Create/Read/Update
+  - fixed 400 "value must not be empty" error when clearing `events_configuration` or `headers`: empty values are now sent as a `REMOVE` patch operation instead of `UPSERT` with an empty array
+  - removing an event from `events_configuration` (or removing the whole block) now correctly unsubscribes it, instead of leaving a stale subscription on the API side
+  - `destination_url` on a nested event now correctly falls back to the resource-level `destination_url` at plan time (both when omitted and when explicitly set to `""`), instead of failing with "destinationUrl must not be blank"
+  - `secret_key_exists` and `version` no longer show as `(known after apply)` on every update; unrelated changes no longer produce a non-empty plan on the next `apply`
+  - a failed event-subscription update no longer aborts the resource `Create`/`Update` after the underlying webhook was already created/updated, which could leave the resource out of Terraform state or apply outdated state
+
 ## [0.9.0] - 2026-07-06
 
 ### Added
