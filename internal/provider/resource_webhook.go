@@ -23,7 +23,6 @@ import (
 var _ resource.Resource = &WebhookResource{}
 var _ resource.ResourceWithImportState = &WebhookResource{}
 var _ resource.ResourceWithValidateConfig = &WebhookResource{}
-var _ resource.ResourceWithModifyPlan = &WebhookResource{}
 
 func NewWebhookResource() resource.Resource {
 	return &WebhookResource{}
