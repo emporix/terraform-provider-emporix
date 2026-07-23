@@ -66,9 +66,9 @@ resource "emporix_webhook" "svix_webhook" {
 # =============================================================================
 # Define different destinations and settings for different event types.
 #
-# If you need per-event overrides (destination_url, secret_key, subscribed)
-# while still driving the list from a variable, add those attributes to the
-# variable's object type as well.
+# This example drives events_configuration from a variable and varies per-event headers only.
+# If you also need per-event overrides (destination_url, secret_key, subscribed), include those
+# attributes (as optional) in the variable's object type as well.
 
 variable "multi_event_webhook_events_configuration" {
   description = "Event-specific configuration for multi_event_webhook, supplied via a variable."

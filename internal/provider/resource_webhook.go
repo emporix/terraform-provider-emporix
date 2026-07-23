@@ -433,7 +433,7 @@ func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.Valid
 		return
 	}
 
-	if eventsConfiguration.IsUnknown() {
+	if eventsConfiguration.IsNull() || eventsConfiguration.IsUnknown() {
 		return
 	}
 
