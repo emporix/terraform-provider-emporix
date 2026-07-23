@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
@@ -146,6 +147,54 @@ func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.0.event_type", "order.created"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.1.event_type", "customer.created"),
 				),
+			},
+		},
+	})
+}
+
+// TestAccWebhookResource_eventsConfigurationFromVariable is a regression test for a bug where
+// assigning events_configuration from a Terraform variable (whose declared type omits the
+// Computed attributes destination_url/secret_key/subscribed) made Terraform widen the value to
+// the resource schema's type and mark the whole list Unknown, crashing ValidateConfig. The same
+// literal value written directly in the resource block never went through that widening, so the
+// bug only showed up when the value came through a variable/module input. PlanOnly is enough
+// here: the crash happened during ValidateConfig, before any API call.
+func TestAccWebhookResource_eventsConfigurationFromVariable(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckWebhookDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+variable "events_configuration" {
+  type = list(object({
+    event_type = string
+    headers    = map(string)
+  }))
+  default = []
+}
+
+resource "emporix_webhook" "test" {
+  code             = "test_webhook_events_from_var"
+  provider_type    = "HTTP"
+  destination_url  = "<URL>"
+  active           = true
+
+  events_configuration = var.events_configuration
+}
+`,
+				ConfigVariables: map[string]config.Variable{
+					"events_configuration": config.ListVariable(
+						config.ObjectVariable(map[string]config.Variable{
+							"event_type": config.StringVariable("order.created"),
+							"headers": config.MapVariable(map[string]config.Variable{
+								"X-Event-Group": config.StringVariable("orders"),
+							}),
+						}),
+					),
+				},
+				PlanOnly: true,
 			},
 		},
 	})

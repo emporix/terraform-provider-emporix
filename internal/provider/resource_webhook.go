@@ -411,19 +411,41 @@ func (r *WebhookResource) ImportState(ctx context.Context, req resource.ImportSt
 }
 
 func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var config WebhookResourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	var providerType types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("provider_type"), &providerType)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if normalizeProvider(config.Provider.ValueString()) != "HTTP" {
+	if normalizeProvider(providerType.ValueString()) != "HTTP" {
 		return
 	}
 
-	parentSet := config.DestinationUrl.IsUnknown() || (!config.DestinationUrl.IsNull() && config.DestinationUrl.ValueString() != "")
+	var destinationUrl types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("destination_url"), &destinationUrl)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	for i, event := range config.EventsConfiguration {
+	var eventsConfiguration types.List
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("events_configuration"), &eventsConfiguration)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if eventsConfiguration.IsUnknown() {
+		return
+	}
+
+	var events []EventConfigModel
+	resp.Diagnostics.Append(eventsConfiguration.ElementsAs(ctx, &events, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	parentSet := destinationUrl.IsUnknown() || (!destinationUrl.IsNull() && destinationUrl.ValueString() != "")
+
+	for i, event := range events {
 		eventSet := event.DestinationUrl.IsUnknown() || (!event.DestinationUrl.IsNull() && event.DestinationUrl.ValueString() != "")
 		if !eventSet && !parentSet {
 			resp.Diagnostics.AddAttributeError(
