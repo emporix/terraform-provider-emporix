@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-07-23
+
+### Fixes
+
+- **emporix_webhook**
+  - fixed "Value Conversion Error" during `terraform plan` when `events_configuration` was assigned from a variable or module input whose declared type omitted the Computed attributes (`destination_url`, `secret_key`, `subscribed`); Terraform widens such a value to match the resource schema and marks it `unknown`, which the provider previously couldn't handle in `ValidateConfig`. The same value written as a literal list directly in the resource block was never affected.
+
+[0.9.2]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.9.2
+
 ## [0.9.1] - 2026-07-20
 
 ### Added

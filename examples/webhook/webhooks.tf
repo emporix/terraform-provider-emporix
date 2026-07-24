@@ -65,38 +65,52 @@ resource "emporix_webhook" "svix_webhook" {
 # Example 2: Webhook with Event-Specific Configuration
 # =============================================================================
 # Define different destinations and settings for different event types.
+#
+# This example drives events_configuration from a variable and varies per-event headers only.
+# If you also need per-event overrides (destination_url, secret_key, subscribed), include those
+# attributes (as optional) in the variable's object type as well.
 
-resource "emporix_webhook" "multi_event_webhook" {
-  code          = "multiEventWebhook"
-  provider_type = "http"
-  destination_url = "<URL>"
-  active        = true
-
-  secret_key = "default-secret-key"
-
-  # Event-specific overrides
-  events_configuration = [
+variable "multi_event_webhook_events_configuration" {
+  description = "Event-specific configuration for multi_event_webhook, supplied via a variable."
+  type = list(object({
+    event_type = string
+    headers    = map(string)
+  }))
+  default = [
     {
-      event_type      = "order.created"
-      secret_key      = "orders-secret-key"
+      event_type = "order.created"
       headers = {
         X-Event-Group = "orders"
       }
     },
     {
       event_type = "customer.created"
-      secret_key = "customers-secret-key"
-      destination_url = "<URL>"
       headers = {
         X-Event-Group = "customers"
       }
     },
     {
-      event_type      = "product.updated"
-      destination_url = "<URL>"
-      subscribed = false
+      event_type = "customer.updated"
+      headers = {
+        X-Event-Group = "customers"
+      }
+    },
+    {
+      event_type = "product.updated"
+      headers    = {}
     }
   ]
+}
+
+resource "emporix_webhook" "multi_event_webhook" {
+  code            = "multiEventWebhook"
+  provider_type   = "http"
+  destination_url = "<URL>"
+  active          = true
+
+  secret_key = "default-secret-key"
+
+  events_configuration = var.multi_event_webhook_events_configuration
 }
 
 # =============================================================================
