@@ -239,6 +239,67 @@ type IdResponse struct {
 	ID string `json:"id"`
 }
 
+// CustomEntityOwner represents ownership information for a custom entity instance
+type CustomEntityOwner struct {
+	Type          string `json:"type"`
+	UserID        string `json:"userId,omitempty"`
+	LegalEntityID string `json:"legalEntityId,omitempty"`
+}
+
+// CustomEntityMetadata represents metadata for a custom entity instance
+type CustomEntityMetadata struct {
+	Version    int    `json:"version"`
+	CreatedAt  string `json:"createdAt,omitempty"`
+	ModifiedAt string `json:"modifiedAt,omitempty"`
+}
+
+// CustomEntityInstance represents a custom entity instance as returned by the API
+type CustomEntityInstance struct {
+	ID       string                 `json:"id"`
+	Type     string                 `json:"type,omitempty"`
+	Name     map[string]string      `json:"name"`
+	Owner    *CustomEntityOwner     `json:"owner,omitempty"`
+	Mixins   map[string]interface{} `json:"mixins,omitempty"`
+	Metadata *CustomEntityMetadata  `json:"metadata,omitempty"`
+}
+
+// CustomEntityCreate represents the creation payload for a custom entity instance
+type CustomEntityCreate struct {
+	ID     string                 `json:"id,omitempty"`
+	Name   map[string]string      `json:"name"`
+	Owner  *CustomEntityOwner     `json:"owner,omitempty"`
+	Mixins map[string]interface{} `json:"mixins,omitempty"`
+}
+
+// CustomEntityUpdate represents the update payload for a custom entity instance.
+// The API documents "id" as required on the PUT body (in addition to the URL path).
+type CustomEntityUpdate struct {
+	ID     string                 `json:"id"`
+	Name   map[string]string      `json:"name"`
+	Owner  *CustomEntityOwner     `json:"owner,omitempty"`
+	Mixins map[string]interface{} `json:"mixins,omitempty"`
+}
+
+// CustomEntityType represents a custom schema type definition
+// (the "container" that custom entity instances belong to).
+type CustomEntityType struct {
+	ID       string                `json:"id"`
+	Name     map[string]string     `json:"name"`
+	Metadata *CustomEntityMetadata `json:"metadata,omitempty"`
+}
+
+// CustomEntityTypeCreate represents the creation payload for a custom schema type
+type CustomEntityTypeCreate struct {
+	ID   string            `json:"id"`
+	Name map[string]string `json:"name"`
+}
+
+// CustomEntityTypeUpdate represents the update payload for a custom schema type
+type CustomEntityTypeUpdate struct {
+	Name     map[string]string     `json:"name"`
+	Metadata *SchemaMetadataUpdate `json:"metadata,omitempty"`
+}
+
 // HeaderFieldValue represents a header value wrapper for the Emporix API.
 // All header values must be wrapped in this struct with structure: {"value": "string"}
 type HeaderFieldValue struct {

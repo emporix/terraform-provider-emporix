@@ -1504,6 +1504,274 @@ func (c *EmporixClient) DeleteSchema(ctx context.Context, id string) error {
 	return nil
 }
 
+// CreateCustomEntityType creates a new custom schema type (the container custom entity instances belong to)
+func (c *EmporixClient) CreateCustomEntityType(ctx context.Context, typeCreate *CustomEntityTypeCreate) (*CustomEntityType, error) {
+	path := fmt.Sprintf("/schema/%s/custom-entities", strings.ToLower(c.Tenant))
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "POST", path, typeCreate, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	// API returns IdResponse on creation
+	var idResp IdResponse
+	if err := json.Unmarshal(bodyBytes, &idResp); err != nil {
+		return nil, fmt.Errorf("error decoding custom entity type creation response: %w", err)
+	}
+
+	tflog.Debug(ctx, "Custom entity type created, fetching complete state via GET")
+
+	return c.GetCustomEntityType(ctx, idResp.ID)
+}
+
+// GetCustomEntityType retrieves a custom schema type by ID
+func (c *EmporixClient) GetCustomEntityType(ctx context.Context, id string) (*CustomEntityType, error) {
+	path := fmt.Sprintf("/schema/%s/custom-entities/%s", strings.ToLower(c.Tenant), id)
+
+	// Always use Accept-Language: * to retrieve all translations
+	headers := map[string]string{
+		"Accept-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var entityType CustomEntityType
+	if err := json.Unmarshal(bodyBytes, &entityType); err != nil {
+		return nil, fmt.Errorf("error decoding custom entity type: %w", err)
+	}
+
+	return &entityType, nil
+}
+
+// UpdateCustomEntityType updates (upserts) a custom schema type
+func (c *EmporixClient) UpdateCustomEntityType(ctx context.Context, id string, updateData *CustomEntityTypeUpdate) (*CustomEntityType, error) {
+	path := fmt.Sprintf("/schema/%s/custom-entities/%s", strings.ToLower(c.Tenant), id)
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	// Documented as 201 (created) or 204 (updated); neither carries a body, so fetch via GET.
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusNoContent, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	tflog.Debug(ctx, "Custom entity type update succeeded, fetching current state via GET")
+
+	return c.GetCustomEntityType(ctx, id)
+}
+
+// DeleteCustomEntityType deletes a custom schema type. The API returns 400 if schemas
+// or custom instances still exist for this type; that surfaces here as a generic error.
+func (c *EmporixClient) DeleteCustomEntityType(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/schema/%s/custom-entities/%s", strings.ToLower(c.Tenant), id)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		if resp.StatusCode == http.StatusBadRequest {
+			return fmt.Errorf("%w (custom entity types cannot be deleted while schemas or instances still reference them)", err)
+		}
+		return err
+	}
+
+	return nil
+}
+
+// CreateCustomEntity creates a new custom entity instance of the given custom schema type
+func (c *EmporixClient) CreateCustomEntity(ctx context.Context, entityType string, entity *CustomEntityCreate) (*CustomEntityInstance, error) {
+	path := fmt.Sprintf("/schema/%s/custom-entities/%s/instances", strings.ToLower(c.Tenant), entityType)
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "POST", path, entity, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	// The API may return either the full instance or just an ID; try the full
+	// instance first and fall back to a GET when the body only carries an ID.
+	var instance CustomEntityInstance
+	if err := json.Unmarshal(bodyBytes, &instance); err != nil {
+		return nil, fmt.Errorf("error decoding custom entity creation response: %w", err)
+	}
+
+	if instance.ID != "" && instance.Name != nil {
+		return &instance, nil
+	}
+
+	var idResp IdResponse
+	if err := json.Unmarshal(bodyBytes, &idResp); err != nil || idResp.ID == "" {
+		return nil, fmt.Errorf("error decoding custom entity creation response: unable to determine created id")
+	}
+
+	tflog.Debug(ctx, "Custom entity created, fetching complete state via GET")
+
+	return c.GetCustomEntity(ctx, entityType, idResp.ID)
+}
+
+// GetCustomEntity retrieves a custom entity instance by type and ID
+func (c *EmporixClient) GetCustomEntity(ctx context.Context, entityType, id string) (*CustomEntityInstance, error) {
+	path := fmt.Sprintf("/schema/%s/custom-entities/%s/instances/%s", strings.ToLower(c.Tenant), entityType, id)
+
+	// Always use Accept-Language: * to retrieve all translations
+	headers := map[string]string{
+		"Accept-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var instance CustomEntityInstance
+	if err := json.Unmarshal(bodyBytes, &instance); err != nil {
+		return nil, fmt.Errorf("error decoding custom entity: %w", err)
+	}
+
+	return &instance, nil
+}
+
+// UpdateCustomEntity updates (upserts) a custom entity instance
+func (c *EmporixClient) UpdateCustomEntity(ctx context.Context, entityType, id string, updateData *CustomEntityUpdate) (*CustomEntityInstance, error) {
+	path := fmt.Sprintf("/schema/%s/custom-entities/%s/instances/%s", strings.ToLower(c.Tenant), entityType, id)
+
+	// Name is always a map, so always use Content-Language: *
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "PUT", path, updateData, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	// The API may return the updated instance directly (200) or no content (204).
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK, http.StatusNoContent); err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode == http.StatusNoContent {
+		tflog.Debug(ctx, "Update succeeded with no content, fetching current state via GET")
+		return c.GetCustomEntity(ctx, entityType, id)
+	}
+
+	var instance CustomEntityInstance
+	if err := json.Unmarshal(bodyBytes, &instance); err != nil {
+		return nil, fmt.Errorf("error decoding custom entity update response: %w", err)
+	}
+
+	return &instance, nil
+}
+
+// DeleteCustomEntity deletes a custom entity instance
+func (c *EmporixClient) DeleteCustomEntity(ctx context.Context, entityType, id string) error {
+	path := fmt.Sprintf("/schema/%s/custom-entities/%s/instances/%s", strings.ToLower(c.Tenant), entityType, id)
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // DeliveryTime represents a delivery time configuration
 // CreateDeliveryTime creates a new delivery time
 func (c *EmporixClient) CreateDeliveryTime(ctx context.Context, deliveryTime *DeliveryTime) (*DeliveryTime, error) {
