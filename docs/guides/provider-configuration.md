@@ -205,7 +205,7 @@ provider "emporix" {
 
 ## Remote State Management
 
-Note: the Emporix provider does **not** persist `client_id`, `client_secret`, or `access_token` into the state file. These are declared `Sensitive` in the provider schema and used only in-memory to obtain an API client — they never appear in any resource's state attributes. That said, the general best practices below (locking, encryption, access control) still apply, since the state file does contain the full configuration and current values of every resource you manage, and Terraform state is not something to store or share casually.
+Note: the Emporix provider does **not** persist `client_id`, `client_secret`, or `access_token` into the state file. These are declared `Sensitive` in the provider schema and used only in-memory to obtain an API client — they never appear in any resource's state attributes. That said, the general best practices below (locking, encryption, access control) still apply: the state file is not your `.tf` configuration, but it does store the ID and current attribute values of every resource you manage (which can include sensitive resource attributes), so it is not something to store or share casually.
 
 ### Why Use Remote State
 
@@ -261,8 +261,8 @@ terraform {
   backend "azurerm" {
     resource_group_name  = "terraform-state-rg"
     storage_account_name = "mycompanytfstate"
-    container_name        = "emporix-state"
-    key                   = "production.terraform.tfstate"
+    container_name       = "emporix-state"
+    key                  = "production.terraform.tfstate"
   }
 }
 ```
@@ -282,7 +282,7 @@ terraform {
 
 1. **Enable encryption at rest** - All the backends above support this; always turn it on
 2. **Enable state locking** - Prevents two `terraform apply` runs from corrupting state concurrently
-3. **Restrict access** - Grant read/write access to the state backend only to the CI/CD service principal and operators who need it; state reveals the full configuration and current values of every managed resource
+3. **Restrict access** - Grant read/write access to the state backend only to the CI/CD service principal and operators who need it; state reveals the resource IDs and current attribute values of every managed resource, which can include sensitive data
 4. **Enable versioning** - Turn on bucket/container versioning so you can recover from accidental `terraform apply` mistakes or state corruption
 5. **Never commit `.tfstate` files to version control** - Add `*.tfstate` and `*.tfstate.backup` to `.gitignore` (already shown in the [Complete Example](#gitignore) below); this applies even more strictly to remote-state configurations, since a locally downloaded state file is just as sensitive
 6. **Isolate state per environment** - Use separate state files (or workspaces) for dev/staging/production so a mistake in one environment can't affect another; see [Multi-Environment Setup](#multi-environment-setup)
@@ -346,8 +346,8 @@ my-terraform-project/
 # Terraform
 .terraform/
 .terraform.lock.hcl
-terraform.tfstate
-terraform.tfstate.backup
+*.tfstate
+*.tfstate.backup
 
 # Sensitive files
 terraform.tfvars
