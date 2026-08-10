@@ -203,6 +203,106 @@ provider "emporix" {
 }
 ```
 
+## Remote State Management
+
+Note: the Emporix provider does **not** persist `client_id`, `client_secret`, or `access_token` into the state file. These are declared `Sensitive` in the provider schema and used only in-memory to obtain an API client — they never appear in any resource's state attributes. That said, the general best practices below (locking, encryption, access control) still apply, since the state file does contain the full configuration and current values of every resource you manage, and Terraform state is not something to store or share casually.
+
+### Why Use Remote State
+
+**Avoid relying on local state (`terraform.tfstate`) for anything beyond quick experiments:**
+
+- ⚠️ **No locking** - Concurrent `terraform apply` runs from different machines/CI jobs can corrupt state or apply conflicting changes
+- ⚠️ **No collaboration** - Team members and CI/CD pipelines need a shared, consistent view of state
+- ⚠️ **No durability** - A local file can be lost, accidentally deleted, or diverge between team members' machines
+
+### Recommended Backends
+
+Use a remote backend that supports encryption at rest and state locking:
+
+**Terraform Cloud / HCP Terraform (Recommended for most teams):**
+
+```terraform
+terraform {
+  cloud {
+    organization = "your-org"
+    workspaces {
+      name = "emporix-production"
+    }
+  }
+}
+```
+
+- ✅ Built-in state encryption, locking, and versioning
+- ✅ Run history and audit log
+- ✅ Can inject `EMPORIX_*` credentials as workspace-level sensitive environment variables, so they never appear in `.tf` files or CI logs
+
+**AWS S3 + DynamoDB (state locking):**
+
+```terraform
+terraform {
+  backend "s3" {
+    bucket         = "mycompany-terraform-state"
+    key            = "emporix/production/terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "terraform-state-lock"
+  }
+}
+```
+
+- ✅ `encrypt = true` enables server-side encryption (use a customer-managed KMS key for stricter control)
+- ✅ `dynamodb_table` provides state locking to prevent concurrent modifications
+- ✅ Restrict bucket access via IAM policy to only the users/roles that need it
+
+**Azure Storage:**
+
+```terraform
+terraform {
+  backend "azurerm" {
+    resource_group_name  = "terraform-state-rg"
+    storage_account_name = "mycompanytfstate"
+    container_name        = "emporix-state"
+    key                   = "production.terraform.tfstate"
+  }
+}
+```
+
+**Google Cloud Storage:**
+
+```terraform
+terraform {
+  backend "gcs" {
+    bucket = "mycompany-terraform-state"
+    prefix = "emporix/production"
+  }
+}
+```
+
+### State Security Checklist
+
+1. **Enable encryption at rest** - All the backends above support this; always turn it on
+2. **Enable state locking** - Prevents two `terraform apply` runs from corrupting state concurrently
+3. **Restrict access** - Grant read/write access to the state backend only to the CI/CD service principal and operators who need it; state reveals the full configuration and current values of every managed resource
+4. **Enable versioning** - Turn on bucket/container versioning so you can recover from accidental `terraform apply` mistakes or state corruption
+5. **Never commit `.tfstate` files to version control** - Add `*.tfstate` and `*.tfstate.backup` to `.gitignore` (already shown in the [Complete Example](#gitignore) below); this applies even more strictly to remote-state configurations, since a locally downloaded state file is just as sensitive
+6. **Isolate state per environment** - Use separate state files (or workspaces) for dev/staging/production so a mistake in one environment can't affect another; see [Multi-Environment Setup](#multi-environment-setup)
+7. **Avoid `terraform state pull` / `terraform show` in shared logs** - These commands print the full state to stdout, which may include sensitive attributes on managed resources
+
+### Migrating from Local to Remote State
+
+If you started with local state, migrate safely:
+
+```bash
+# 1. Add a backend block to your terraform block (as shown above)
+# 2. Re-initialize - Terraform will prompt to migrate existing state
+terraform init
+
+# 3. Verify the migration
+terraform state list
+```
+
+Terraform will ask for confirmation before copying local state to the new backend. Keep a backup of `terraform.tfstate` until you've confirmed the migration succeeded.
+
 ## Provider Configuration Reference
 
 ### Arguments
@@ -426,6 +526,7 @@ terraform:
 5. **Credential Rotation** - Regularly rotate client secrets
 6. **Never Commit Secrets** - Always use `.gitignore`
 7. **Separate Tenants** - Use different tenants for dev/staging/production
+8. **Use Remote State** - Store state in an encrypted, locked remote backend rather than locally; see [Remote State Management](#remote-state-management)
 
 ## Multi-Environment Setup
 
