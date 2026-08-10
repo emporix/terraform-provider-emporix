@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-08-10
+
+### Documentation
+
+- **Provider Configuration Guide**
+  - added a "Remote State Management" section covering remote backend options (Terraform Cloud/HCP Terraform, S3+DynamoDB, Azure Storage, GCS), a state security checklist, and guidance for migrating from local to remote state
+
+[0.9.3]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.9.3
+
 ## [0.9.2] - 2026-07-23
 
 ### Fixes
