@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-08-06
+
+### Added
+
+- **New Resource: emporix_price_module** - Manage price models in Emporix
+  - Full CRUD operations
+  - Supports `BASIC`, `VOLUME`, and `TIERED` pricing strategies via `tier_definition`
+  - Localized `name`/`description` fields
+  - Optional `force_delete` to remove a price model together with its assigned prices
+
+[0.10.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.10.0
+
 ## [0.9.2] - 2026-07-23
 
 ### Fixes
