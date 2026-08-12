@@ -120,8 +120,10 @@ func (r *PriceModuleResource) Schema(ctx context.Context, req resource.SchemaReq
 				Required:            true,
 			},
 			"includes_markup": schema.BoolAttribute{
-				MarkdownDescription: "Whether the price model operates in markup preview mode.",
+				MarkdownDescription: "Whether the price model operates in markup preview mode. The API requires this field to be non-null, so it defaults to `false` when not set.",
 				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(false),
 			},
 			"default": schema.BoolAttribute{
 				MarkdownDescription: "Whether this is the tenant's default price model. Defaults to `false`.",
@@ -185,8 +187,8 @@ func (r *PriceModuleResource) Schema(ctx context.Context, req resource.SchemaReq
 				},
 			},
 			"measurement_unit": schema.SingleNestedAttribute{
-				MarkdownDescription: "Measurement unit that this price model's tiers are expressed in.",
-				Optional:            true,
+				MarkdownDescription: "Measurement unit that this price model's tiers are expressed in. Required by the API even for `BASIC` price models.",
+				Required:            true,
 				Attributes: map[string]schema.Attribute{
 					"quantity": schema.Float64Attribute{
 						MarkdownDescription: "Measurement unit quantity. Must be zero or a positive value.",

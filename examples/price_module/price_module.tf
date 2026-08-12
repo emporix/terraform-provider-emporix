@@ -63,10 +63,15 @@ resource "emporix_price_module" "standard" {
       {
         min_quantity = {
           quantity  = 0
-          unit_code = "piece"
+          unit_code = "pc"
         }
       }
     ]
+  }
+
+  measurement_unit = {
+    quantity  = 1
+    unit_code = "pc"
   }
 }
 
@@ -89,19 +94,19 @@ resource "emporix_price_module" "volume" {
       {
         min_quantity = {
           quantity  = 0
-          unit_code = "piece"
+          unit_code = "pc"
         }
       },
       {
         min_quantity = {
           quantity  = 10
-          unit_code = "piece"
+          unit_code = "pc"
         }
       },
       {
         min_quantity = {
           quantity  = 50
-          unit_code = "piece"
+          unit_code = "pc"
         }
       }
     ]
@@ -109,7 +114,7 @@ resource "emporix_price_module" "volume" {
 
   measurement_unit = {
     quantity  = 1
-    unit_code = "piece"
+    unit_code = "pc"
   }
 }
 
@@ -138,6 +143,11 @@ resource "emporix_price_module" "tiered" {
         }
       }
     ]
+  }
+
+  measurement_unit = {
+    quantity  = 1
+    unit_code = "kg"
   }
 }
 
