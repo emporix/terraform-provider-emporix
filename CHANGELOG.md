@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **New Resource: emporix_price_module** - Manage price models in Emporix
+- **New Resource: emporix_price_model** - Manage price models in Emporix
   - Full CRUD operations
   - Supports `BASIC`, `VOLUME`, and `TIERED` pricing strategies via `tier_definition`
   - Localized `name`/`description` fields

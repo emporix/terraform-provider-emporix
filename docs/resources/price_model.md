@@ -1,11 +1,11 @@
 ---
-page_title: "emporix_price_module Resource - terraform-provider-emporix"
+page_title: "emporix_price_model Resource - terraform-provider-emporix"
 subcategory: ""
 description: |-
   Manages price models that define a pricing strategy for prices.
 ---
 
-# emporix_price_module (Resource)
+# emporix_price_model (Resource)
 
 Manages an Emporix price model. A price model defines the pricing strategy (`BASIC`, `VOLUME`, or `TIERED`) and the
 quantity tiers that prices assigned to it are calculated against. See the
@@ -31,7 +31,7 @@ ascending order, the first tier must start at `0`, and all tiers must share the 
 ### Basic Price Model (Flat Pricing)
 
 ```terraform
-resource "emporix_price_module" "standard" {
+resource "emporix_price_model" "standard" {
   id           = "standard-pricing"
   includes_tax = true
 
@@ -57,7 +57,7 @@ resource "emporix_price_module" "standard" {
 ### Volume Pricing
 
 ```terraform
-resource "emporix_price_module" "volume" {
+resource "emporix_price_model" "volume" {
   id           = "volume-pricing"
   includes_tax = true
   default      = false
@@ -104,7 +104,7 @@ resource "emporix_price_module" "volume" {
 ### Tiered Pricing
 
 ```terraform
-resource "emporix_price_module" "tiered" {
+resource "emporix_price_model" "tiered" {
   id           = "tiered-pricing"
   includes_tax = false
 
@@ -189,7 +189,7 @@ Required nested block list.
 Price models can be imported using their ID:
 
 ```shell
-terraform import emporix_price_module.standard standard-pricing
+terraform import emporix_price_model.standard standard-pricing
 ```
 
 ## Required OAuth Scopes
@@ -209,7 +209,7 @@ The unique identifier of the price model.
 
 ```terraform
 output "standard_price_model_id" {
-  value = emporix_price_module.standard.id
+  value = emporix_price_model.standard.id
 }
 ```
 
@@ -219,6 +219,6 @@ The tier definition, including any tier IDs assigned by the API.
 
 ```terraform
 output "volume_tiers" {
-  value = emporix_price_module.volume.tier_definition.tiers
+  value = emporix_price_model.volume.tier_definition.tiers
 }
 ```

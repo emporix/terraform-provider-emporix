@@ -19,20 +19,21 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
-var _ resource.Resource = &PriceModuleResource{}
-var _ resource.ResourceWithImportState = &PriceModuleResource{}
+var _ resource.Resource = &PriceModelResource{}
+var _ resource.ResourceWithImportState = &PriceModelResource{}
+var _ resource.ResourceWithModifyPlan = &PriceModelResource{}
 
-func NewPriceModuleResource() resource.Resource {
-	return &PriceModuleResource{}
+func NewPriceModelResource() resource.Resource {
+	return &PriceModelResource{}
 }
 
-// PriceModuleResource defines the resource implementation
-type PriceModuleResource struct {
+// PriceModelResource defines the resource implementation
+type PriceModelResource struct {
 	client *EmporixClient
 }
 
-// PriceModuleResourceModel describes the resource data model
-type PriceModuleResourceModel struct {
+// PriceModelResourceModel describes the resource data model
+type PriceModelResourceModel struct {
 	ID              types.String `tfsdk:"id"`
 	IncludesTax     types.Bool   `tfsdk:"includes_tax"`
 	IncludesMarkup  types.Bool   `tfsdk:"includes_markup"`
@@ -68,42 +69,47 @@ type MeasurementUnitModel struct {
 	UnitCode types.String  `tfsdk:"unit_code"`
 }
 
-func priceModuleMinQuantityAttrTypes() map[string]attr.Type {
+func priceModelMinQuantityAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"quantity":  types.Float64Type,
 		"unit_code": types.StringType,
 	}
 }
 
-func priceModuleTierAttrTypes() map[string]attr.Type {
+func priceModelTierAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"id":           types.StringType,
-		"min_quantity": types.ObjectType{AttrTypes: priceModuleMinQuantityAttrTypes()},
+		"min_quantity": types.ObjectType{AttrTypes: priceModelMinQuantityAttrTypes()},
 	}
 }
 
-func priceModuleTierDefinitionAttrTypes() map[string]attr.Type {
+func priceModelTierDefinitionAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"tier_type": types.StringType,
-		"tiers":     types.ListType{ElemType: types.ObjectType{AttrTypes: priceModuleTierAttrTypes()}},
+		"tiers":     types.ListType{ElemType: types.ObjectType{AttrTypes: priceModelTierAttrTypes()}},
 	}
 }
 
-func priceModuleMeasurementUnitAttrTypes() map[string]attr.Type {
+func priceModelMeasurementUnitAttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"quantity":  types.Float64Type,
 		"unit_code": types.StringType,
 	}
 }
 
-func (r *PriceModuleResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_price_module"
+func (r *PriceModelResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_price_model"
 }
 
-func (r *PriceModuleResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *PriceModelResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages an Emporix price model, which defines a pricing strategy (basic, volume, or tiered) " +
-			"that prices can be assigned to. See the [Price Models API](https://developer.emporix.io/api-references-1/readme/api-reference-26/price-models) for details.",
+			"that prices can be assigned to. See the [Price Models API](https://developer.emporix.io/api-references-1/readme/api-reference-26/price-models) for details.\n\n" +
+			"**Known upstream issue:** the Price Models API has a confirmed read-after-write consistency bug (reported to Emporix, independent of this provider) " +
+			"where a GET immediately following a successful update can briefly reflect the change and then revert to pre-update data on a later read - the reversion " +
+			"includes the API's own `metadata.version`, so it is not a caching artifact on this provider's side. This can cause `terraform apply` to report " +
+			"\"Provider produced inconsistent result after apply\" on `emporix_price_model` updates (including tier changes) even though the update was sent correctly. " +
+			"There is no workaround on the provider side; re-running `apply` after the API's data settles typically resolves it.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -160,12 +166,11 @@ func (r *PriceModuleResource) Schema(ctx context.Context, req resource.SchemaReq
 						NestedObject: schema.NestedAttributeObject{
 							Attributes: map[string]schema.Attribute{
 								"id": schema.StringAttribute{
-									MarkdownDescription: "Tier identifier, assigned automatically by the API.",
-									Optional:            true,
-									Computed:            true,
-									PlanModifiers: []planmodifier.String{
-										stringplanmodifier.UseStateForUnknown(),
-									},
+									MarkdownDescription: "Tier identifier, assigned automatically by the API. Shown as `(known after apply)` whenever the tier list changes, " +
+										"since Terraform's position-based tracking can't reliably predict which tier keeps which id across insertions or removals - " +
+										"the provider resolves the real id-to-tier matching at apply time.",
+									Optional: true,
+									Computed: true,
 								},
 								"min_quantity": schema.SingleNestedAttribute{
 									MarkdownDescription: "Minimum ordered quantity from which this tier applies.",
@@ -209,7 +214,7 @@ func (r *PriceModuleResource) Schema(ctx context.Context, req resource.SchemaReq
 	}
 }
 
-func (r *PriceModuleResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *PriceModelResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -226,15 +231,116 @@ func (r *PriceModuleResource) Configure(ctx context.Context, req resource.Config
 	r.client = client
 }
 
-func (r *PriceModuleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan PriceModuleResourceModel
+// ModifyPlan resolves each planned tier's computed "id" by matching it against the prior
+// state's tiers by min_quantity identity, instead of the framework's default positional
+// behavior (which has no plan modifier to rely on here, since a tier's real id can only be
+// tracked by identity, not list position). Without this, Terraform would either reuse a
+// wrong id from a shifted list position, or - lacking any plan modifier at all - mark every
+// tier's id unknown on every update regardless of whether the tier list actually changed.
+// Since this runs before Update(), priceModelToAPI can read the already-correct id straight
+// off the plan with no further reconciliation needed at apply time.
+func (r *PriceModelResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Nothing to reconcile on create (no prior state) or destroy (no plan).
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var state PriceModelResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var plan PriceModelResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if state.TierDefinition.IsNull() || state.TierDefinition.IsUnknown() ||
+		plan.TierDefinition.IsNull() || plan.TierDefinition.IsUnknown() {
+		return
+	}
+
+	var stateTierDef, planTierDef TierDefinitionModel
+	resp.Diagnostics.Append(state.TierDefinition.As(ctx, &stateTierDef, basetypes.ObjectAsOptions{})...)
+	resp.Diagnostics.Append(plan.TierDefinition.As(ctx, &planTierDef, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var stateTiers []TierModel
+	resp.Diagnostics.Append(stateTierDef.Tiers.ElementsAs(ctx, &stateTiers, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var planTiers []TierModel
+	resp.Diagnostics.Append(planTierDef.Tiers.ElementsAs(ctx, &planTiers, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	idByQuantity := make(map[float64]string, len(stateTiers))
+	for _, tierModel := range stateTiers {
+		if tierModel.ID.IsNull() || tierModel.ID.IsUnknown() {
+			continue
+		}
+
+		var minQty MinQuantityModel
+		d := tierModel.MinQuantity.As(ctx, &minQty, basetypes.ObjectAsOptions{})
+		resp.Diagnostics.Append(d...)
+		if d.HasError() {
+			continue
+		}
+
+		idByQuantity[minQty.Quantity.ValueFloat64()] = tierModel.ID.ValueString()
+	}
+
+	changed := false
+	for i := range planTiers {
+		var minQty MinQuantityModel
+		d := planTiers[i].MinQuantity.As(ctx, &minQty, basetypes.ObjectAsOptions{})
+		resp.Diagnostics.Append(d...)
+		if d.HasError() {
+			continue
+		}
+
+		if id, ok := idByQuantity[minQty.Quantity.ValueFloat64()]; ok {
+			planTiers[i].ID = types.StringValue(id)
+			changed = true
+		}
+	}
+
+	if !changed {
+		return
+	}
+
+	newTiersList, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: priceModelTierAttrTypes()}, planTiers)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	planTierDef.Tiers = newTiersList
+
+	newTierDefObj, d := types.ObjectValueFrom(ctx, priceModelTierDefinitionAttrTypes(), planTierDef)
+	resp.Diagnostics.Append(d...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("tier_definition"), newTierDefObj)...)
+}
+
+func (r *PriceModelResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan PriceModelResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	priceModel, diags := priceModuleToAPI(ctx, &plan)
+	priceModel, diags := priceModelToAPI(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -246,7 +352,7 @@ func (r *PriceModuleResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	resp.Diagnostics.Append(priceModuleFromAPI(ctx, created, &plan)...)
+	resp.Diagnostics.Append(priceModelFromAPI(ctx, created, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -254,8 +360,8 @@ func (r *PriceModuleResource) Create(ctx context.Context, req resource.CreateReq
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *PriceModuleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state PriceModuleResourceModel
+func (r *PriceModelResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state PriceModelResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -272,7 +378,7 @@ func (r *PriceModuleResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	resp.Diagnostics.Append(priceModuleFromAPI(ctx, priceModel, &state)...)
+	resp.Diagnostics.Append(priceModelFromAPI(ctx, priceModel, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -280,15 +386,15 @@ func (r *PriceModuleResource) Read(ctx context.Context, req resource.ReadRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *PriceModuleResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan PriceModuleResourceModel
+func (r *PriceModelResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan PriceModelResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	priceModel, diags := priceModuleToAPI(ctx, &plan)
+	priceModel, diags := priceModelToAPI(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -300,7 +406,7 @@ func (r *PriceModuleResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	resp.Diagnostics.Append(priceModuleFromAPI(ctx, updated, &plan)...)
+	resp.Diagnostics.Append(priceModelFromAPI(ctx, updated, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -308,8 +414,8 @@ func (r *PriceModuleResource) Update(ctx context.Context, req resource.UpdateReq
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *PriceModuleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state PriceModuleResourceModel
+func (r *PriceModelResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state PriceModelResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -325,12 +431,12 @@ func (r *PriceModuleResource) Delete(ctx context.Context, req resource.DeleteReq
 	}
 }
 
-func (r *PriceModuleResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *PriceModelResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// priceModuleToAPI converts a PriceModuleResourceModel (Terraform plan) into a PriceModelUpsert (API payload)
-func priceModuleToAPI(ctx context.Context, model *PriceModuleResourceModel) (*PriceModelUpsert, diag.Diagnostics) {
+// priceModelToAPI converts a PriceModelResourceModel (Terraform plan) into a PriceModelUpsert (API payload)
+func priceModelToAPI(ctx context.Context, model *PriceModelResourceModel) (*PriceModelUpsert, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	pm := &PriceModelUpsert{
@@ -417,9 +523,9 @@ func priceModuleToAPI(ctx context.Context, model *PriceModuleResourceModel) (*Pr
 	return pm, diags
 }
 
-// priceModuleFromAPI populates a PriceModuleResourceModel (Terraform state) from a PriceModel (API response).
+// priceModelFromAPI populates a PriceModelResourceModel (Terraform state) from a PriceModel (API response).
 // It never touches model.ForceDelete, which is a client-side-only field the API doesn't return.
-func priceModuleFromAPI(ctx context.Context, pm *PriceModel, model *PriceModuleResourceModel) diag.Diagnostics {
+func priceModelFromAPI(ctx context.Context, pm *PriceModel, model *PriceModelResourceModel) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	model.ID = types.StringValue(pm.ID)
@@ -457,7 +563,7 @@ func priceModuleFromAPI(ctx context.Context, pm *PriceModel, model *PriceModuleR
 		return diags
 	}
 
-	tierDefObj, d := priceModuleTierDefinitionFromAPI(ctx, pm.TierDefinition)
+	tierDefObj, d := priceModelTierDefinitionFromAPI(ctx, pm.TierDefinition)
 	diags.Append(d...)
 	model.TierDefinition = tierDefObj
 
@@ -466,22 +572,22 @@ func priceModuleFromAPI(ctx context.Context, pm *PriceModel, model *PriceModuleR
 			Quantity: types.Float64Value(pm.MeasurementUnit.Quantity),
 			UnitCode: types.StringValue(pm.MeasurementUnit.UnitCode),
 		}
-		muObj, d := types.ObjectValueFrom(ctx, priceModuleMeasurementUnitAttrTypes(), muModel)
+		muObj, d := types.ObjectValueFrom(ctx, priceModelMeasurementUnitAttrTypes(), muModel)
 		diags.Append(d...)
 		model.MeasurementUnit = muObj
 	} else {
-		model.MeasurementUnit = types.ObjectNull(priceModuleMeasurementUnitAttrTypes())
+		model.MeasurementUnit = types.ObjectNull(priceModelMeasurementUnitAttrTypes())
 	}
 
 	return diags
 }
 
-// priceModuleTierDefinitionFromAPI converts a TierDefinition (API) into a types.Object (Terraform)
-func priceModuleTierDefinitionFromAPI(ctx context.Context, td *TierDefinition) (types.Object, diag.Diagnostics) {
+// priceModelTierDefinitionFromAPI converts a TierDefinition (API) into a types.Object (Terraform)
+func priceModelTierDefinitionFromAPI(ctx context.Context, td *TierDefinition) (types.Object, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	if td == nil {
-		return types.ObjectNull(priceModuleTierDefinitionAttrTypes()), diags
+		return types.ObjectNull(priceModelTierDefinitionAttrTypes()), diags
 	}
 
 	tierModels := make([]TierModel, len(td.Tiers))
@@ -493,7 +599,7 @@ func priceModuleTierDefinitionFromAPI(ctx context.Context, td *TierDefinition) (
 			unitCode = tier.MinQuantity.UnitCode
 		}
 
-		minQtyObj, d := types.ObjectValueFrom(ctx, priceModuleMinQuantityAttrTypes(), MinQuantityModel{
+		minQtyObj, d := types.ObjectValueFrom(ctx, priceModelMinQuantityAttrTypes(), MinQuantityModel{
 			Quantity: types.Float64Value(quantity),
 			UnitCode: types.StringValue(unitCode),
 		})
@@ -505,10 +611,10 @@ func priceModuleTierDefinitionFromAPI(ctx context.Context, td *TierDefinition) (
 		}
 	}
 
-	tiersList, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: priceModuleTierAttrTypes()}, tierModels)
+	tiersList, d := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: priceModelTierAttrTypes()}, tierModels)
 	diags.Append(d...)
 
-	tierDefObj, d := types.ObjectValueFrom(ctx, priceModuleTierDefinitionAttrTypes(), TierDefinitionModel{
+	tierDefObj, d := types.ObjectValueFrom(ctx, priceModelTierDefinitionAttrTypes(), TierDefinitionModel{
 		TierType: types.StringValue(td.TierType),
 		Tiers:    tiersList,
 	})
