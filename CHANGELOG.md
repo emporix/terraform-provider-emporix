@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixes
+
+- **emporix_sitesettings**
+  - mixin ordering is now deterministic. The mixin list was rebuilt by ranging over a Go map, so a site with two or more mixins either failed its apply with "Provider produced inconsistent result after apply" or left a permanent plan diff in which every mixin appeared changed. The read-back list is now sorted by name and reordered to follow the caller's order, so the declared order is what lands in state. No schema change; existing state loads unchanged
+
 ## [0.9.3] - 2026-08-10
 
 ### Documentation

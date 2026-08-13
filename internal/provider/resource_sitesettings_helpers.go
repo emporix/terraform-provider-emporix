@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -576,6 +577,16 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 				}
 			}
 
+			// The loop above ranges over a Go map, so its order is random. Sort for determinism --
+			// this is the order used after an import, where there is no prior order to restore.
+			sort.Slice(mixinsList, func(i, j int) bool {
+				return mixinsList[i].Name.ValueString() < mixinsList[j].Name.ValueString()
+			})
+
+			// Then follow the caller's order: previousModel is the plan in Create/Update and the
+			// prior state in Read, so the declared order is what lands in state.
+			mixinsList = reorderMixinsLike(ctx, previousModel.Mixins, mixinsList)
+
 			if len(mixinsList) > 0 {
 				mixinsListValue, d := types.ListValueFrom(ctx, types.ObjectType{
 					AttrTypes: map[string]attr.Type{
@@ -644,6 +655,48 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 			},
 		})
 	}
+}
+
+// reorderMixinsLike reorders mixins to follow reference, keyed by mixin name (names are unique --
+// they are keys of a JSON object in the API document).
+//
+// Names missing from mixins are dropped and names missing from reference are appended in sorted
+// order, so a mixin added or removed outside Terraform still shows up as drift. A null reference
+// leaves the sorted order untouched.
+func reorderMixinsLike(ctx context.Context, reference types.List, mixins []MixinModel) []MixinModel {
+	if reference.IsNull() || reference.IsUnknown() || len(mixins) == 0 {
+		return mixins
+	}
+
+	var referenceList []MixinModel
+	if d := reference.ElementsAs(ctx, &referenceList, false); d.HasError() {
+		// Unusable reference: keep the sorted order.
+		return mixins
+	}
+
+	byName := make(map[string]MixinModel, len(mixins))
+	for _, mixin := range mixins {
+		byName[mixin.Name.ValueString()] = mixin
+	}
+
+	ordered := make([]MixinModel, 0, len(mixins))
+	placed := make(map[string]bool, len(mixins))
+
+	for _, ref := range referenceList {
+		name := ref.Name.ValueString()
+		if mixin, ok := byName[name]; ok && !placed[name] {
+			ordered = append(ordered, mixin)
+			placed[name] = true
+		}
+	}
+
+	for _, mixin := range mixins {
+		if !placed[mixin.Name.ValueString()] {
+			ordered = append(ordered, mixin)
+		}
+	}
+
+	return ordered
 }
 
 // Helper function to convert empty strings to null
