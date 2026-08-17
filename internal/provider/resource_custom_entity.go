@@ -43,6 +43,7 @@ type CustomEntityResourceModel struct {
 	Name       types.Map    `tfsdk:"name"`
 	Owner      types.Object `tfsdk:"owner"`
 	Mixins     types.String `tfsdk:"mixins"`
+	Media      types.List   `tfsdk:"media"`
 	CreatedAt  types.String `tfsdk:"created_at"`
 	ModifiedAt types.String `tfsdk:"modified_at"`
 	Version    types.Int64  `tfsdk:"version"`
@@ -109,15 +110,18 @@ func (r *CustomEntityResource) Schema(ctx context.Context, req resource.SchemaRe
 				},
 				Attributes: map[string]schema.Attribute{
 					"type": schema.StringAttribute{
-						MarkdownDescription: "Owner type. Valid values: EMPLOYEE, CUSTOMER, SERVICE.",
+						MarkdownDescription: "Owner type. Valid values when setting an owner: `EMPLOYEE`, `CUSTOMER`. (`SERVICE` can appear when reading back an instance whose owner was auto-assigned by the API under a `manage_own` scope, but cannot be set explicitly.)",
 						Required:            true,
 						Validators: []validator.String{
-							stringvalidator.OneOf("EMPLOYEE", "CUSTOMER", "SERVICE"),
+							stringvalidator.OneOf("EMPLOYEE", "CUSTOMER"),
 						},
 					},
 					"user_id": schema.StringAttribute{
-						MarkdownDescription: "ID of the owning user.",
-						Optional:            true,
+						MarkdownDescription: "ID of the owning user. Required when `owner` is set.",
+						Required:            true,
+						Validators: []validator.String{
+							stringvalidator.LengthAtLeast(1),
+						},
 					},
 					"legal_entity_id": schema.StringAttribute{
 						MarkdownDescription: "Legal entity ID of the owner. Only valid when `owner.type` is `CUSTOMER`.",
@@ -126,10 +130,16 @@ func (r *CustomEntityResource) Schema(ctx context.Context, req resource.SchemaRe
 				},
 			},
 			"mixins": schema.StringAttribute{
-				MarkdownDescription: "Arbitrary instance data as a JSON-encoded string (e.g. `jsonencode({...})`). Defaults to an empty object.",
-				Optional:            true,
+				MarkdownDescription: "Arbitrary instance data as a JSON-encoded string (e.g. `jsonencode({...})`). Defaults to an empty object. " +
+					"Note that the API stores this as a JSON-encoded string value, not a nested object, so its content is opaque to the API unless validated by an attached `emporix_schema`.",
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString("{}"),
+			},
+			"media": schema.ListAttribute{
+				MarkdownDescription: "IDs of media assets assigned to this instance. Read-only here; media is assigned through Emporix's media management APIs, not through this resource.",
+				ElementType:         types.StringType,
 				Computed:            true,
-				Default:             stringdefault.StaticString("{}"),
 			},
 			"created_at": schema.StringAttribute{
 				MarkdownDescription: "Timestamp when the instance was created.",
@@ -222,9 +232,9 @@ func (r *CustomEntityResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	var mixins map[string]interface{}
-	if err := json.Unmarshal([]byte(data.Mixins.ValueString()), &mixins); err != nil {
-		resp.Diagnostics.AddError("Invalid JSON", fmt.Sprintf("Unable to parse mixins as JSON: %s", err))
+	mixins := data.Mixins.ValueString()
+	if !json.Valid([]byte(mixins)) {
+		resp.Diagnostics.AddError("Invalid JSON", "Unable to parse mixins: not valid JSON.")
 		return
 	}
 
@@ -303,9 +313,9 @@ func (r *CustomEntityResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	var mixins map[string]interface{}
-	if err := json.Unmarshal([]byte(data.Mixins.ValueString()), &mixins); err != nil {
-		resp.Diagnostics.AddError("Invalid JSON", fmt.Sprintf("Unable to parse mixins as JSON: %s", err))
+	mixins := data.Mixins.ValueString()
+	if !json.Valid([]byte(mixins)) {
+		resp.Diagnostics.AddError("Invalid JSON", "Unable to parse mixins: not valid JSON.")
 		return
 	}
 
@@ -376,7 +386,7 @@ func customEntityOwnerFromModel(ctx context.Context, owner types.Object) (*Custo
 	if diags.HasError() {
 		return nil, diags
 	}
-	
+
 	return &CustomEntityOwner{
 		Type:          ownerModel.Type.ValueString(),
 		UserID:        ownerModel.UserID.ValueString(),
@@ -420,16 +430,15 @@ func mapCustomEntityToModel(ctx context.Context, instance *CustomEntityInstance,
 		data.Owner = types.ObjectNull(CustomEntityOwnerModel{}.AttributeTypes())
 	}
 
-	if instance.Mixins != nil {
-		mixinsJSON, err := json.Marshal(instance.Mixins)
-		if err != nil {
-			diags.AddError("JSON Error", fmt.Sprintf("Unable to marshal mixins to JSON: %s", err))
-		} else {
-			data.Mixins = types.StringValue(string(mixinsJSON))
-		}
+	if instance.Mixins != "" {
+		data.Mixins = types.StringValue(instance.Mixins)
 	} else {
 		data.Mixins = types.StringValue("{}")
 	}
+
+	mediaValue, d := types.ListValueFrom(ctx, types.StringType, instance.Media)
+	diags.Append(d...)
+	data.Media = mediaValue
 
 	if instance.Metadata != nil {
 		data.Version = types.Int64Value(int64(instance.Metadata.Version))

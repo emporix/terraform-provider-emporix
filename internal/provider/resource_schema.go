@@ -66,7 +66,7 @@ func (r *SchemaResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				Required:            true,
 			},
 			"types": schema.ListAttribute{
-				MarkdownDescription: "List of schema types. Each entry is either one of the predefined values (CART, CART_ITEM, CATEGORY, COMPANY, COUPON, CUSTOMER, CUSTOMER_ADDRESS, ORDER, ORDER_ENTRY, PRODUCT, QUOTE, RETURN, PRICE_LIST, SITE, CUSTOM_ENTITY, VENDOR, MEDIA) or the `id` of a custom schema type created via `emporix_custom_entity_type` (e.g. \"DOCUMENT\") - this is how a schema attaches structure validation to a specific custom entity type.",
+				MarkdownDescription: "List of schema types. Valid values: CART, CATEGORY, COMPANY, COUPON, CUSTOMER, CUSTOMER_ADDRESS, ORDER, PRODUCT, QUOTE, RETURN, PRICE_LIST, SITE, CUSTOM_ENTITY, VENDOR.",
 				ElementType:         types.StringType,
 				Required:            true,
 			},

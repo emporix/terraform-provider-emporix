@@ -253,31 +253,33 @@ type CustomEntityMetadata struct {
 	ModifiedAt string `json:"modifiedAt,omitempty"`
 }
 
-// CustomEntityInstance represents a custom entity instance as returned by the API
+// CustomEntityInstance represents a custom entity instance as returned by the API.
+// Per the API spec, "mixins" is itself a JSON-encoded string, not a nested object.
 type CustomEntityInstance struct {
-	ID       string                 `json:"id"`
-	Type     string                 `json:"type,omitempty"`
-	Name     map[string]string      `json:"name"`
-	Owner    *CustomEntityOwner     `json:"owner,omitempty"`
-	Mixins   map[string]interface{} `json:"mixins,omitempty"`
-	Metadata *CustomEntityMetadata  `json:"metadata,omitempty"`
+	ID       string                `json:"id"`
+	Type     string                `json:"type,omitempty"`
+	Name     map[string]string     `json:"name"`
+	Owner    *CustomEntityOwner    `json:"owner,omitempty"`
+	Mixins   string                `json:"mixins,omitempty"`
+	Media    []string              `json:"media,omitempty"`
+	Metadata *CustomEntityMetadata `json:"metadata,omitempty"`
 }
 
 // CustomEntityCreate represents the creation payload for a custom entity instance
 type CustomEntityCreate struct {
-	ID     string                 `json:"id,omitempty"`
-	Name   map[string]string      `json:"name"`
-	Owner  *CustomEntityOwner     `json:"owner,omitempty"`
-	Mixins map[string]interface{} `json:"mixins,omitempty"`
+	ID     string             `json:"id,omitempty"`
+	Name   map[string]string  `json:"name"`
+	Owner  *CustomEntityOwner `json:"owner,omitempty"`
+	Mixins string             `json:"mixins,omitempty"`
 }
 
 // CustomEntityUpdate represents the update payload for a custom entity instance.
 // The API documents "id" as required on the PUT body (in addition to the URL path).
 type CustomEntityUpdate struct {
-	ID     string                 `json:"id"`
-	Name   map[string]string      `json:"name"`
-	Owner  *CustomEntityOwner     `json:"owner,omitempty"`
-	Mixins map[string]interface{} `json:"mixins,omitempty"`
+	ID     string             `json:"id"`
+	Name   map[string]string  `json:"name"`
+	Owner  *CustomEntityOwner `json:"owner,omitempty"`
+	Mixins string             `json:"mixins,omitempty"`
 }
 
 // CustomEntityType represents a custom schema type definition
