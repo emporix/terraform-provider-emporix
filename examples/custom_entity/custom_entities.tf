@@ -1,16 +1,4 @@
 # Example Terraform configuration for Emporix Custom Entities
-#
-# Custom entity instances are data records that live under a custom schema type,
-# registered via emporix_custom_entity_type (a distinct resource from emporix_schema).
-# The `type` argument of emporix_custom_entity_instance must match the `id` of such a
-# emporix_custom_entity_type resource. To scope schema validation to just this custom
-# type, set the schema's `types` to the custom type's own id (e.g.
-# types = [emporix_custom_entity_type.document.id]) rather than the generic
-# "CUSTOM_ENTITY" literal, which would apply to every custom entity type instead.
-#
-# Each "mixins" field must be declared as an attribute in an emporix_schema attached
-# to the instance's type, and nested under a top-level key equal to that schema's own
-# `id` (not the field names directly) - see invoice_doc below.
 
 terraform {
   required_providers {
@@ -180,17 +168,38 @@ resource "emporix_custom_entity_instance" "invoice_doc" {
   depends_on = [emporix_schema.invoice_fields]
 }
 
+# Example 3: Creating multiple DOCUMENT instances in bulk with for_each.
+locals {
+  welcome_docs = {
+    "welcome-1" = "Welcome Document 1"
+    "welcome-2" = "Welcome Document 2"
+  }
+}
+
+resource "emporix_custom_entity_instance" "welcome_docs" {
+  for_each = local.welcome_docs
+
+  type = emporix_custom_entity_type.document.id
+  name = {
+    en = each.value
+  }
+}
+
 # Outputs
 output "welcome_doc" {
   description = "The welcome document instance"
   value = {
     id         = emporix_custom_entity_instance.welcome_doc.id
     created_at = emporix_custom_entity_instance.welcome_doc.created_at
-    version    = emporix_custom_entity_instance.welcome_doc.version
   }
 }
 
 output "invoice_doc_mixins" {
   description = "The mixin data stored on the invoice document instance"
   value       = emporix_custom_entity_instance.invoice_doc.mixins
+}
+
+output "welcome_docs" {
+  description = "IDs of the bulk-created welcome document instances"
+  value       = { for k, v in emporix_custom_entity_instance.welcome_docs : k => v.id }
 }

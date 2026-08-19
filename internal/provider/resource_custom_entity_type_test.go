@@ -23,7 +23,6 @@ func TestAccCustomEntityTypeResource_basic(t *testing.T) {
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_custom_entity_type.test", "id", "TEST_DOCUMENT_BASIC"),
 					resource.TestCheckResourceAttrSet("emporix_custom_entity_type.test", "name.en"),
-					resource.TestCheckResourceAttrSet("emporix_custom_entity_type.test", "version"),
 					resource.TestCheckResourceAttrSet("emporix_custom_entity_type.test", "created_at"),
 				),
 			},

@@ -39,15 +39,13 @@ type CustomEntityInstanceResource struct {
 
 // CustomEntityInstanceResourceModel describes the resource data model.
 type CustomEntityInstanceResourceModel struct {
-	Type       types.String `tfsdk:"type"`
-	ID         types.String `tfsdk:"id"`
-	Name       types.Map    `tfsdk:"name"`
-	Owner      types.Object `tfsdk:"owner"`
-	Mixins     types.String `tfsdk:"mixins"`
-	Media      types.List   `tfsdk:"media"`
-	CreatedAt  types.String `tfsdk:"created_at"`
-	ModifiedAt types.String `tfsdk:"modified_at"`
-	Version    types.Int64  `tfsdk:"version"`
+	Type      types.String `tfsdk:"type"`
+	ID        types.String `tfsdk:"id"`
+	Name      types.Map    `tfsdk:"name"`
+	Owner     types.Object `tfsdk:"owner"`
+	Mixins    types.String `tfsdk:"mixins"`
+	Media     types.List   `tfsdk:"media"`
+	CreatedAt types.String `tfsdk:"created_at"`
 }
 
 // CustomEntityOwnerModel describes the nested "owner" attribute.
@@ -149,16 +147,6 @@ func (r *CustomEntityInstanceResource) Schema(ctx context.Context, req resource.
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
-			},
-			"modified_at": schema.StringAttribute{
-				// No UseStateForUnknown: the API bumps this on every write, not just when this attribute changes.
-				MarkdownDescription: "Timestamp when the instance was last modified.",
-				Computed:            true,
-			},
-			"version": schema.Int64Attribute{
-				// No UseStateForUnknown - same reason as modified_at above.
-				MarkdownDescription: "Instance version (managed by the API).",
-				Computed:            true,
 			},
 		},
 	}
@@ -301,31 +289,12 @@ func (r *CustomEntityInstanceResource) Update(ctx context.Context, req resource.
 		return
 	}
 
-	var state CustomEntityInstanceResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
 	entityType := data.Type.ValueString()
 
 	tflog.Debug(ctx, "Updating custom entity instance", map[string]interface{}{
 		"type": entityType,
 		"id":   data.ID.ValueString(),
 	})
-
-	if data.Name.Equal(state.Name) && data.Owner.Equal(state.Owner) && data.Mixins.Equal(state.Mixins) {
-		// Nothing to write - refresh from the API instead of sending a no-op PUT that
-		// would needlessly bump version/modified_at.
-		instance, err := r.client.GetCustomEntityInstance(ctx, entityType, data.ID.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read custom entity instance, got error: %s", err))
-			return
-		}
-		mapCustomEntityInstanceToModel(ctx, instance, entityType, &data, &resp.Diagnostics)
-		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-		return
-	}
 
 	nameMap := make(map[string]string)
 	resp.Diagnostics.Append(data.Name.ElementsAs(ctx, &nameMap, false)...)
@@ -471,21 +440,8 @@ func mapCustomEntityInstanceToModel(ctx context.Context, instance *CustomEntityI
 	diags.Append(d...)
 	data.Media = mediaValue
 
-	if instance.Metadata != nil {
-		data.Version = types.Int64Value(int64(instance.Metadata.Version))
-
-		data.CreatedAt = types.StringNull()
-		if instance.Metadata.CreatedAt != "" {
-			data.CreatedAt = types.StringValue(instance.Metadata.CreatedAt)
-		}
-
-		data.ModifiedAt = types.StringNull()
-		if instance.Metadata.ModifiedAt != "" {
-			data.ModifiedAt = types.StringValue(instance.Metadata.ModifiedAt)
-		}
-	} else {
-		data.Version = types.Int64Null()
-		data.CreatedAt = types.StringNull()
-		data.ModifiedAt = types.StringNull()
+	data.CreatedAt = types.StringNull()
+	if instance.Metadata != nil && instance.Metadata.CreatedAt != "" {
+		data.CreatedAt = types.StringValue(instance.Metadata.CreatedAt)
 	}
 }

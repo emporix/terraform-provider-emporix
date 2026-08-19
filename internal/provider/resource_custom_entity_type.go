@@ -32,11 +32,9 @@ type CustomEntityTypeResource struct {
 
 // CustomEntityTypeResourceModel describes the resource data model.
 type CustomEntityTypeResourceModel struct {
-	ID         types.String `tfsdk:"id"`
-	Name       types.Map    `tfsdk:"name"`
-	CreatedAt  types.String `tfsdk:"created_at"`
-	ModifiedAt types.String `tfsdk:"modified_at"`
-	Version    types.Int64  `tfsdk:"version"`
+	ID        types.String `tfsdk:"id"`
+	Name      types.Map    `tfsdk:"name"`
+	CreatedAt types.String `tfsdk:"created_at"`
 }
 
 func (r *CustomEntityTypeResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -75,16 +73,6 @@ func (r *CustomEntityTypeResource) Schema(ctx context.Context, req resource.Sche
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
-			},
-			"modified_at": schema.StringAttribute{
-				// No UseStateForUnknown: the API bumps this on every write, not just when this attribute changes.
-				MarkdownDescription: "Timestamp when the custom type was last modified.",
-				Computed:            true,
-			},
-			"version": schema.Int64Attribute{
-				// No UseStateForUnknown - same reason as modified_at above.
-				MarkdownDescription: "Custom type version, used for optimistic locking on updates (managed by the API).",
-				Computed:            true,
 			},
 		},
 	}
@@ -174,28 +162,9 @@ func (r *CustomEntityTypeResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	var state CustomEntityTypeResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
 	tflog.Debug(ctx, "Updating custom entity type", map[string]interface{}{
 		"id": data.ID.ValueString(),
 	})
-
-	if data.Name.Equal(state.Name) {
-		// Nothing to write - refresh from the API instead of sending a no-op PUT that
-		// would needlessly bump version/modified_at.
-		current, err := r.client.GetCustomEntityType(ctx, data.ID.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read custom entity type, got error: %s", err))
-			return
-		}
-		mapCustomEntityTypeToModel(ctx, current, &data, &resp.Diagnostics)
-		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-		return
-	}
 
 	nameMap := make(map[string]string)
 	resp.Diagnostics.Append(data.Name.ElementsAs(ctx, &nameMap, false)...)
@@ -256,21 +225,8 @@ func mapCustomEntityTypeToModel(ctx context.Context, entityType *CustomEntityTyp
 		data.Name = nameMapValue
 	}
 
-	if entityType.Metadata != nil {
-		data.Version = types.Int64Value(int64(entityType.Metadata.Version))
-
-		data.CreatedAt = types.StringNull()
-		if entityType.Metadata.CreatedAt != "" {
-			data.CreatedAt = types.StringValue(entityType.Metadata.CreatedAt)
-		}
-
-		data.ModifiedAt = types.StringNull()
-		if entityType.Metadata.ModifiedAt != "" {
-			data.ModifiedAt = types.StringValue(entityType.Metadata.ModifiedAt)
-		}
-	} else {
-		data.Version = types.Int64Null()
-		data.CreatedAt = types.StringNull()
-		data.ModifiedAt = types.StringNull()
+	data.CreatedAt = types.StringNull()
+	if entityType.Metadata != nil && entityType.Metadata.CreatedAt != "" {
+		data.CreatedAt = types.StringValue(entityType.Metadata.CreatedAt)
 	}
 }

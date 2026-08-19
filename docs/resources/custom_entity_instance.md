@@ -135,6 +135,26 @@ resource "emporix_schema" "document_fields" {
 }
 ```
 
+### Using for_each
+
+```terraform
+locals {
+  welcome_docs = {
+    "welcome-1" = "Welcome Document 1"
+    "welcome-2" = "Welcome Document 2"
+  }
+}
+
+resource "emporix_custom_entity_instance" "welcome_docs" {
+  for_each = local.welcome_docs
+
+  type = emporix_custom_entity_type.document.id
+  name = {
+    en = each.value
+  }
+}
+```
+
 ## Schema
 
 ### Required
@@ -152,8 +172,6 @@ resource "emporix_schema" "document_fields" {
 
 - `media` (List of String) IDs of media assets assigned to this instance. Read-only here; media is assigned through Emporix's media management APIs, not through this resource.
 - `created_at` (String) Timestamp when the instance was created.
-- `modified_at` (String) Timestamp when the instance was last modified.
-- `version` (Number) Instance version (managed by the API).
 
 <a id="nestedatt--owner"></a>
 ### Nested Schema for `owner`
@@ -194,3 +212,4 @@ These per-type scopes are auto-generated when the corresponding `emporix_custom_
 - `mixins` fields are nested one level deeper than the attribute definitions - under a top-level key equal to the governing `emporix_schema`'s own `id`, not the field names directly (see the `INVOICE` example above).
 - This provider can't look up a platform user's identifier on your behalf. If you set `owner`, source `user_id` yourself from your tenant's own user administration (e.g. the IAM users API or the Management Dashboard).
 - `owner.type` can also read back as `SERVICE` for an instance whose owner was auto-assigned by the API under a `manage_own` scope, but `SERVICE` cannot be set explicitly.
+- Updates require providing the current `metadata.version`, which is handled automatically by the provider and not exposed as a resource attribute.

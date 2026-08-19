@@ -41,6 +41,62 @@ resource "emporix_custom_entity_type" "warranty" {
 }
 ```
 
+### With an Attached Schema
+
+Define an `emporix_schema` resource with `types` set to the type's own `id` to validate the `mixins` of its instances:
+
+```terraform
+resource "emporix_custom_entity_type" "warranty" {
+  id = "WARRANTY"
+  name = {
+    en = "Warranty"
+  }
+}
+
+resource "emporix_schema" "warranty_fields" {
+  id = "warranty-fields"
+  name = {
+    en = "Warranty Fields"
+  }
+  types = [emporix_custom_entity_type.warranty.id]
+
+  attributes = [
+    {
+      key = "durationMonths"
+      name = {
+        en = "Duration (Months)"
+      }
+      type = "DECIMAL"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = true
+        nullable  = false
+      }
+    }
+  ]
+}
+```
+
+### Using for_each
+
+```terraform
+locals {
+  custom_types = {
+    "DOCUMENT" = { en = "Document" }
+    "WARRANTY" = { en = "Warranty" }
+    "INVOICE"  = { en = "Invoice" }
+  }
+}
+
+resource "emporix_custom_entity_type" "types" {
+  for_each = local.custom_types
+
+  id   = each.key
+  name = each.value
+}
+```
+
 ## Schema
 
 ### Required
@@ -51,8 +107,6 @@ resource "emporix_custom_entity_type" "warranty" {
 ### Read-Only
 
 - `created_at` (String) Timestamp when the custom type was created.
-- `modified_at` (String) Timestamp when the custom type was last modified.
-- `version` (Number) Custom type version, used for optimistic locking on updates (managed by the API).
 
 ## Import
 
@@ -72,3 +126,4 @@ terraform import emporix_custom_entity_type.document DOCUMENT
 - Deletion fails with an error if any `emporix_schema` or `emporix_custom_entity_instance` resources still reference this type.
 - To validate the `mixins` of instances of this type, define an `emporix_schema` resource with `types` set to this resource's `id` (e.g. `types = [emporix_custom_entity_type.document.id]`) rather than the generic `CUSTOM_ENTITY` literal. See `emporix_custom_entity_instance` for the required `mixins` format.
 - Instances with non-empty `mixins` require an attached schema; without one, any mixin key is rejected.
+- Updates require providing the current `metadata.version`, which is handled automatically by the provider and not exposed as a resource attribute.

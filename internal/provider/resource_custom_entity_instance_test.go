@@ -18,16 +18,13 @@ func TestAccCustomEntityInstanceResource_basic(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckCustomEntityInstanceDestroy,
 		Steps: []resource.TestStep{
-			// Create and Read testing. ExpectNonEmptyPlan: modified_at/version can't carry
-			// UseStateForUnknown, so a post-apply replan shows a diff even with no config changes.
+			// Create and Read testing.
 			{
-				Config:             testAccCustomEntityInstanceResourceConfig(typeID, `{}`),
-				ExpectNonEmptyPlan: true,
+				Config: testAccCustomEntityInstanceResourceConfig(typeID, `{}`),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("emporix_custom_entity_instance.test", "id"),
 					resource.TestCheckResourceAttr("emporix_custom_entity_instance.test", "type", typeID),
 					resource.TestCheckResourceAttr("emporix_custom_entity_instance.test", "name.en", "Test Instance"),
-					resource.TestCheckResourceAttrSet("emporix_custom_entity_instance.test", "version"),
 					resource.TestCheckResourceAttrSet("emporix_custom_entity_instance.test", "created_at"),
 					resource.TestCheckResourceAttr("emporix_custom_entity_instance.test", "media.#", "0"),
 				),
@@ -43,8 +40,7 @@ func TestAccCustomEntityInstanceResource_basic(t *testing.T) {
 			},
 			// Update testing
 			{
-				Config:             testAccCustomEntityInstanceResourceConfigUpdated(typeID, `{}`),
-				ExpectNonEmptyPlan: true, // see the note on the create step above
+				Config: testAccCustomEntityInstanceResourceConfigUpdated(typeID, `{}`),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_custom_entity_instance.test", "name.en", "Updated Test Instance"),
 				),
@@ -116,15 +112,13 @@ func TestAccCustomEntityInstanceResource_typeRequiresReplace(t *testing.T) {
 		CheckDestroy:             testAccCheckCustomEntityInstanceDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config:             testAccCustomEntityInstanceResourceConfigMovableType(typeA, typeB, typeA),
-				ExpectNonEmptyPlan: true, // modified_at/version can't carry UseStateForUnknown
+				Config: testAccCustomEntityInstanceResourceConfigMovableType(typeA, typeB, typeA),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_custom_entity_instance.movable", "type", typeA),
 				),
 			},
 			{
-				Config:             testAccCustomEntityInstanceResourceConfigMovableType(typeA, typeB, typeB),
-				ExpectNonEmptyPlan: true,
+				Config: testAccCustomEntityInstanceResourceConfigMovableType(typeA, typeB, typeB),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_custom_entity_instance.movable", "type", typeB),
 				),
@@ -153,8 +147,7 @@ func TestAccCustomEntityInstanceResource_mixinsNestingRequired(t *testing.T) {
 				ExpectError: regexp.MustCompile(`(?s)No\s+matching\s+schema\s+found`),
 			},
 			{
-				Config:             testAccCustomEntityInstanceResourceConfigMixins(typeID, true),
-				ExpectNonEmptyPlan: true, // modified_at/version can't carry UseStateForUnknown
+				Config: testAccCustomEntityInstanceResourceConfigMixins(typeID, true),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttrSet("emporix_custom_entity_instance.test", "id"),
 				),
