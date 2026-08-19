@@ -45,12 +45,9 @@ func (r *CustomEntityTypeResource) Metadata(ctx context.Context, req resource.Me
 
 func (r *CustomEntityTypeResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a custom schema type in Emporix - the container that custom entity instances (`emporix_custom_entity`) belong to. " +
-			"This is a distinct resource from `emporix_schema`: it registers the *type* (e.g. \"DOCUMENT\") under which instances live at `/schema/{tenant}/custom-entities/{type}/instances`, " +
-			"and its creation auto-generates the per-type OAuth scopes `custom.<lowercase-id>_manage`, `custom.<lowercase-id>_manage_own`, `custom.<lowercase-id>_read`, and `custom.<lowercase-id>_read_own`. " +
-			"Managing this resource requires the `schema.schema_manage` OAuth scope. " +
-			"The `id` is immutable after creation and cannot be `AVAILABILITY` or `LOCATION` (reserved). " +
-			"Deletion fails if any `emporix_schema` or `emporix_custom_entity` resources still reference this type.",
+		MarkdownDescription: "Manages a custom schema type in Emporix - the container that custom entity instances (`emporix_custom_entity_instance`) belong to. " +
+			"Creating a type auto-generates the per-type OAuth scopes `custom.<lowercase-id>_manage`, `custom.<lowercase-id>_manage_own`, `custom.<lowercase-id>_read`, and `custom.<lowercase-id>_read_own`. " +
+			"Deletion fails if any `emporix_schema` or `emporix_custom_entity_instance` resources still reference this type.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -75,12 +72,17 @@ func (r *CustomEntityTypeResource) Schema(ctx context.Context, req resource.Sche
 			"created_at": schema.StringAttribute{
 				MarkdownDescription: "Timestamp when the custom type was created.",
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"modified_at": schema.StringAttribute{
+				// No UseStateForUnknown: the API bumps this on every write, not just when this attribute changes.
 				MarkdownDescription: "Timestamp when the custom type was last modified.",
 				Computed:            true,
 			},
 			"version": schema.Int64Attribute{
+				// No UseStateForUnknown - same reason as modified_at above.
 				MarkdownDescription: "Custom type version, used for optimistic locking on updates (managed by the API).",
 				Computed:            true,
 			},
@@ -172,9 +174,28 @@ func (r *CustomEntityTypeResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
+	var state CustomEntityTypeResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	tflog.Debug(ctx, "Updating custom entity type", map[string]interface{}{
 		"id": data.ID.ValueString(),
 	})
+
+	if data.Name.Equal(state.Name) {
+		// Nothing to write - refresh from the API instead of sending a no-op PUT that
+		// would needlessly bump version/modified_at.
+		current, err := r.client.GetCustomEntityType(ctx, data.ID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read custom entity type, got error: %s", err))
+			return
+		}
+		mapCustomEntityTypeToModel(ctx, current, &data, &resp.Diagnostics)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
+	}
 
 	nameMap := make(map[string]string)
 	resp.Diagnostics.Append(data.Name.ElementsAs(ctx, &nameMap, false)...)
@@ -182,18 +203,8 @@ func (r *CustomEntityTypeResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	// Fetch current version for optimistic locking (required by PUT)
-	current, err := r.client.GetCustomEntityType(ctx, data.ID.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read current custom entity type state, got error: %s", err))
-		return
-	}
-
 	updateData := &CustomEntityTypeUpdate{
 		Name: nameMap,
-	}
-	if current.Metadata != nil && current.Metadata.Version > 0 {
-		updateData.Metadata = &SchemaMetadataUpdate{Version: current.Metadata.Version}
 	}
 
 	entityType, err := r.client.UpdateCustomEntityType(ctx, data.ID.ValueString(), updateData)

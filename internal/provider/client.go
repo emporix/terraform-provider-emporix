@@ -1577,6 +1577,19 @@ func (c *EmporixClient) GetCustomEntityType(ctx context.Context, id string) (*Cu
 
 // UpdateCustomEntityType updates (upserts) a custom schema type
 func (c *EmporixClient) UpdateCustomEntityType(ctx context.Context, id string, updateData *CustomEntityTypeUpdate) (*CustomEntityType, error) {
+	// First, get the current type to retrieve metadata.version (used for optimistic locking)
+	current, err := c.GetCustomEntityType(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("error getting custom entity type before update: %w", err)
+	}
+
+	if current.Metadata != nil && current.Metadata.Version > 0 {
+		if updateData.Metadata == nil {
+			updateData.Metadata = &SchemaMetadataUpdate{}
+		}
+		updateData.Metadata.Version = current.Metadata.Version
+	}
+
 	path := fmt.Sprintf("/schema/%s/custom-entities/%s", strings.ToLower(c.Tenant), id)
 
 	// Name is always a map, so always use Content-Language: *
@@ -1631,8 +1644,8 @@ func (c *EmporixClient) DeleteCustomEntityType(ctx context.Context, id string) e
 	return nil
 }
 
-// CreateCustomEntity creates a new custom entity instance of the given custom schema type
-func (c *EmporixClient) CreateCustomEntity(ctx context.Context, entityType string, entity *CustomEntityCreate) (*CustomEntityInstance, error) {
+// CreateCustomEntityInstance creates a new custom entity instance of the given custom schema type
+func (c *EmporixClient) CreateCustomEntityInstance(ctx context.Context, entityType string, entity *CustomEntityInstanceCreate) (*CustomEntityInstance, error) {
 	path := fmt.Sprintf("/schema/%s/custom-entities/%s/instances", strings.ToLower(c.Tenant), entityType)
 
 	// Name is always a map, so always use Content-Language: *
@@ -1673,11 +1686,11 @@ func (c *EmporixClient) CreateCustomEntity(ctx context.Context, entityType strin
 
 	tflog.Debug(ctx, "Custom entity created, fetching complete state via GET")
 
-	return c.GetCustomEntity(ctx, entityType, idResp.ID)
+	return c.GetCustomEntityInstance(ctx, entityType, idResp.ID)
 }
 
-// GetCustomEntity retrieves a custom entity instance by type and ID
-func (c *EmporixClient) GetCustomEntity(ctx context.Context, entityType, id string) (*CustomEntityInstance, error) {
+// GetCustomEntityInstance retrieves a custom entity instance by type and ID
+func (c *EmporixClient) GetCustomEntityInstance(ctx context.Context, entityType, id string) (*CustomEntityInstance, error) {
 	path := fmt.Sprintf("/schema/%s/custom-entities/%s/instances/%s", strings.ToLower(c.Tenant), entityType, id)
 
 	// Always use Accept-Language: * to retrieve all translations
@@ -1712,8 +1725,21 @@ func (c *EmporixClient) GetCustomEntity(ctx context.Context, entityType, id stri
 	return &instance, nil
 }
 
-// UpdateCustomEntity updates (upserts) a custom entity instance
-func (c *EmporixClient) UpdateCustomEntity(ctx context.Context, entityType, id string, updateData *CustomEntityUpdate) (*CustomEntityInstance, error) {
+// UpdateCustomEntityInstance updates (upserts) a custom entity instance
+func (c *EmporixClient) UpdateCustomEntityInstance(ctx context.Context, entityType, id string, updateData *CustomEntityInstanceUpdate) (*CustomEntityInstance, error) {
+	// First, get the current instance to retrieve metadata.version (used for optimistic locking)
+	current, err := c.GetCustomEntityInstance(ctx, entityType, id)
+	if err != nil {
+		return nil, fmt.Errorf("error getting custom entity instance before update: %w", err)
+	}
+
+	if current.Metadata != nil && current.Metadata.Version > 0 {
+		if updateData.Metadata == nil {
+			updateData.Metadata = &SchemaMetadataUpdate{}
+		}
+		updateData.Metadata.Version = current.Metadata.Version
+	}
+
 	path := fmt.Sprintf("/schema/%s/custom-entities/%s/instances/%s", strings.ToLower(c.Tenant), entityType, id)
 
 	// Name is always a map, so always use Content-Language: *
@@ -1739,7 +1765,7 @@ func (c *EmporixClient) UpdateCustomEntity(ctx context.Context, entityType, id s
 
 	if resp.StatusCode == http.StatusNoContent {
 		tflog.Debug(ctx, "Update succeeded with no content, fetching current state via GET")
-		return c.GetCustomEntity(ctx, entityType, id)
+		return c.GetCustomEntityInstance(ctx, entityType, id)
 	}
 
 	var instance CustomEntityInstance
@@ -1750,8 +1776,8 @@ func (c *EmporixClient) UpdateCustomEntity(ctx context.Context, entityType, id s
 	return &instance, nil
 }
 
-// DeleteCustomEntity deletes a custom entity instance
-func (c *EmporixClient) DeleteCustomEntity(ctx context.Context, entityType, id string) error {
+// DeleteCustomEntityInstance deletes a custom entity instance
+func (c *EmporixClient) DeleteCustomEntityInstance(ctx context.Context, entityType, id string) error {
 	path := fmt.Sprintf("/schema/%s/custom-entities/%s/instances/%s", strings.ToLower(c.Tenant), entityType, id)
 
 	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)

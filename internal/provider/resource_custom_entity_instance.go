@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -23,21 +24,21 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &CustomEntityResource{}
-var _ resource.ResourceWithImportState = &CustomEntityResource{}
-var _ resource.ResourceWithValidateConfig = &CustomEntityResource{}
+var _ resource.Resource = &CustomEntityInstanceResource{}
+var _ resource.ResourceWithImportState = &CustomEntityInstanceResource{}
+var _ resource.ResourceWithValidateConfig = &CustomEntityInstanceResource{}
 
-func NewCustomEntityResource() resource.Resource {
-	return &CustomEntityResource{}
+func NewCustomEntityInstanceResource() resource.Resource {
+	return &CustomEntityInstanceResource{}
 }
 
-// CustomEntityResource defines the resource implementation.
-type CustomEntityResource struct {
+// CustomEntityInstanceResource defines the resource implementation.
+type CustomEntityInstanceResource struct {
 	client *EmporixClient
 }
 
-// CustomEntityResourceModel describes the resource data model.
-type CustomEntityResourceModel struct {
+// CustomEntityInstanceResourceModel describes the resource data model.
+type CustomEntityInstanceResourceModel struct {
 	Type       types.String `tfsdk:"type"`
 	ID         types.String `tfsdk:"id"`
 	Name       types.Map    `tfsdk:"name"`
@@ -64,17 +65,15 @@ func (CustomEntityOwnerModel) AttributeTypes() map[string]attr.Type {
 	}
 }
 
-func (r *CustomEntityResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_custom_entity"
+func (r *CustomEntityInstanceResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_custom_entity_instance"
 }
 
-func (r *CustomEntityResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *CustomEntityInstanceResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a custom entity instance in Emporix. " +
 			"Custom entity instances are data records that live under a custom schema type, managed via the `emporix_custom_entity_type` resource (a distinct resource from `emporix_schema`). " +
-			"The `type` argument must match the `id` of such an existing `emporix_custom_entity_type` resource (e.g. `emporix_custom_entity_type.document.id`). " +
-			"You may optionally also define an `emporix_schema` resource to enforce a validated structure for instances - reference this type by setting the schema's `types` to the custom type's own id (e.g. `types = [emporix_custom_entity_type.document.id]`), not the generic `CUSTOM_ENTITY` literal. This is not required for basic usage. " +
-			"Managing this resource requires the `schema.custominstance_manage` OAuth scope (or the per-type `custom.<lowercase-type>_manage` scope, note the type is lowercased in the scope name) on the tenant's API client; reads require `schema.custominstance_read` or `custom.<lowercase-type>_read`. " +
+			"The `type` argument must match the `id` of such an existing `emporix_custom_entity_type` resource. " +
 			"Both `type` and `owner` are immutable after creation: changing either forces replacement. " +
 			"Import using the format `type:id` (e.g. `DOCUMENT:doc-123`).",
 
@@ -101,7 +100,7 @@ func (r *CustomEntityResource) Schema(ctx context.Context, req resource.SchemaRe
 				Required:            true,
 			},
 			"owner": schema.SingleNestedAttribute{
-				MarkdownDescription: "Ownership of this instance. Once set, ownership cannot be changed; modifying it forces replacement.",
+				MarkdownDescription: "Ownership of this instance. Cannot be changed after creation.",
 				Optional:            true,
 				Computed:            true,
 				PlanModifiers: []planmodifier.Object{
@@ -110,28 +109,28 @@ func (r *CustomEntityResource) Schema(ctx context.Context, req resource.SchemaRe
 				},
 				Attributes: map[string]schema.Attribute{
 					"type": schema.StringAttribute{
-						MarkdownDescription: "Owner type. Valid values when setting an owner: `EMPLOYEE`, `CUSTOMER`. (`SERVICE` can appear when reading back an instance whose owner was auto-assigned by the API under a `manage_own` scope, but cannot be set explicitly.)",
+						MarkdownDescription: "Type of the owner. Valid values: `EMPLOYEE`, `CUSTOMER`.",
 						Required:            true,
 						Validators: []validator.String{
 							stringvalidator.OneOf("EMPLOYEE", "CUSTOMER"),
 						},
 					},
 					"user_id": schema.StringAttribute{
-						MarkdownDescription: "ID of the owning user. Required when `owner` is set.",
+						MarkdownDescription: "Identifier of the employee or customer associated with the owner. Must be a real, existing user ID on your tenant.",
 						Required:            true,
 						Validators: []validator.String{
 							stringvalidator.LengthAtLeast(1),
 						},
 					},
 					"legal_entity_id": schema.StringAttribute{
-						MarkdownDescription: "Legal entity ID of the owner. Only valid when `owner.type` is `CUSTOMER`.",
+						MarkdownDescription: "Legal entity identifier. Can be provided only when `type` is `CUSTOMER`.",
 						Optional:            true,
 					},
 				},
 			},
 			"mixins": schema.StringAttribute{
-				MarkdownDescription: "Arbitrary instance data as a JSON-encoded string (e.g. `jsonencode({...})`). Defaults to an empty object. " +
-					"Note that the API stores this as a JSON-encoded string value, not a nested object, so its content is opaque to the API unless validated by an attached `emporix_schema`.",
+				MarkdownDescription: "Instance data as a JSON-encoded string (e.g. `jsonencode({...})`). Defaults to an empty object. " +
+					"Each field must be nested under a top-level key equal to the `id` of the `emporix_schema` that declares it, e.g. `jsonencode({\"document-fields\" = {note = \"hello\"}})`.",
 				Optional: true,
 				Computed: true,
 				Default:  stringdefault.StaticString("{}"),
@@ -140,16 +139,24 @@ func (r *CustomEntityResource) Schema(ctx context.Context, req resource.SchemaRe
 				MarkdownDescription: "IDs of media assets assigned to this instance. Read-only here; media is assigned through Emporix's media management APIs, not through this resource.",
 				ElementType:         types.StringType,
 				Computed:            true,
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"created_at": schema.StringAttribute{
 				MarkdownDescription: "Timestamp when the instance was created.",
 				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"modified_at": schema.StringAttribute{
+				// No UseStateForUnknown: the API bumps this on every write, not just when this attribute changes.
 				MarkdownDescription: "Timestamp when the instance was last modified.",
 				Computed:            true,
 			},
 			"version": schema.Int64Attribute{
+				// No UseStateForUnknown - same reason as modified_at above.
 				MarkdownDescription: "Instance version (managed by the API).",
 				Computed:            true,
 			},
@@ -157,7 +164,7 @@ func (r *CustomEntityResource) Schema(ctx context.Context, req resource.SchemaRe
 	}
 }
 
-func (r *CustomEntityResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *CustomEntityInstanceResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -174,7 +181,7 @@ func (r *CustomEntityResource) Configure(ctx context.Context, req resource.Confi
 	r.client = client
 }
 
-func (r *CustomEntityResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+func (r *CustomEntityInstanceResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var owner types.Object
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("owner"), &owner)...)
 	if resp.Diagnostics.HasError() {
@@ -201,13 +208,13 @@ func (r *CustomEntityResource) ValidateConfig(ctx context.Context, req resource.
 		resp.Diagnostics.AddAttributeError(
 			path.Root("owner").AtName("legal_entity_id"),
 			"Invalid Owner Configuration",
-			"owner.legal_entity_id can only be set when owner.type is \"CUSTOMER\".",
+			"owner.legal_entity_id can only be provided when owner.type is \"CUSTOMER\".",
 		)
 	}
 }
 
-func (r *CustomEntityResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data CustomEntityResourceModel
+func (r *CustomEntityInstanceResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data CustomEntityInstanceResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -216,7 +223,7 @@ func (r *CustomEntityResource) Create(ctx context.Context, req resource.CreateRe
 
 	entityType := data.Type.ValueString()
 
-	tflog.Debug(ctx, "Creating custom entity", map[string]interface{}{
+	tflog.Debug(ctx, "Creating custom entity instance", map[string]interface{}{
 		"type": entityType,
 	})
 
@@ -232,32 +239,32 @@ func (r *CustomEntityResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	mixins := data.Mixins.ValueString()
-	if !json.Valid([]byte(mixins)) {
-		resp.Diagnostics.AddError("Invalid JSON", "Unable to parse mixins: not valid JSON.")
+	var mixins map[string]interface{}
+	if err := json.Unmarshal([]byte(data.Mixins.ValueString()), &mixins); err != nil {
+		resp.Diagnostics.AddError("Invalid JSON", fmt.Sprintf("Unable to parse mixins as JSON: %s", err))
 		return
 	}
 
-	createData := &CustomEntityCreate{
+	createData := &CustomEntityInstanceCreate{
 		ID:     data.ID.ValueString(),
 		Name:   nameMap,
 		Owner:  owner,
 		Mixins: mixins,
 	}
 
-	instance, err := r.client.CreateCustomEntity(ctx, entityType, createData)
+	instance, err := r.client.CreateCustomEntityInstance(ctx, entityType, createData)
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create custom entity, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create custom entity instance, got error: %s", err))
 		return
 	}
 
-	mapCustomEntityToModel(ctx, instance, entityType, &data, &resp.Diagnostics)
+	mapCustomEntityInstanceToModel(ctx, instance, entityType, &data, &resp.Diagnostics)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *CustomEntityResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data CustomEntityResourceModel
+func (r *CustomEntityInstanceResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data CustomEntityInstanceResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -266,40 +273,59 @@ func (r *CustomEntityResource) Read(ctx context.Context, req resource.ReadReques
 
 	entityType := data.Type.ValueString()
 
-	tflog.Debug(ctx, "Reading custom entity", map[string]interface{}{
+	tflog.Debug(ctx, "Reading custom entity instance", map[string]interface{}{
 		"type": entityType,
 		"id":   data.ID.ValueString(),
 	})
 
-	instance, err := r.client.GetCustomEntity(ctx, entityType, data.ID.ValueString())
+	instance, err := r.client.GetCustomEntityInstance(ctx, entityType, data.ID.ValueString())
 	if err != nil {
 		if IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read custom entity, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read custom entity instance, got error: %s", err))
 		return
 	}
 
-	mapCustomEntityToModel(ctx, instance, entityType, &data, &resp.Diagnostics)
+	mapCustomEntityInstanceToModel(ctx, instance, entityType, &data, &resp.Diagnostics)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *CustomEntityResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data CustomEntityResourceModel
+func (r *CustomEntityInstanceResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data CustomEntityInstanceResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
+	var state CustomEntityInstanceResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	entityType := data.Type.ValueString()
 
-	tflog.Debug(ctx, "Updating custom entity", map[string]interface{}{
+	tflog.Debug(ctx, "Updating custom entity instance", map[string]interface{}{
 		"type": entityType,
 		"id":   data.ID.ValueString(),
 	})
+
+	if data.Name.Equal(state.Name) && data.Owner.Equal(state.Owner) && data.Mixins.Equal(state.Mixins) {
+		// Nothing to write - refresh from the API instead of sending a no-op PUT that
+		// would needlessly bump version/modified_at.
+		instance, err := r.client.GetCustomEntityInstance(ctx, entityType, data.ID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read custom entity instance, got error: %s", err))
+			return
+		}
+		mapCustomEntityInstanceToModel(ctx, instance, entityType, &data, &resp.Diagnostics)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
+	}
 
 	nameMap := make(map[string]string)
 	resp.Diagnostics.Append(data.Name.ElementsAs(ctx, &nameMap, false)...)
@@ -313,52 +339,52 @@ func (r *CustomEntityResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	mixins := data.Mixins.ValueString()
-	if !json.Valid([]byte(mixins)) {
-		resp.Diagnostics.AddError("Invalid JSON", "Unable to parse mixins: not valid JSON.")
+	var mixins map[string]interface{}
+	if err := json.Unmarshal([]byte(data.Mixins.ValueString()), &mixins); err != nil {
+		resp.Diagnostics.AddError("Invalid JSON", fmt.Sprintf("Unable to parse mixins as JSON: %s", err))
 		return
 	}
 
-	updateData := &CustomEntityUpdate{
+	updateData := &CustomEntityInstanceUpdate{
 		ID:     data.ID.ValueString(),
 		Name:   nameMap,
 		Owner:  owner,
 		Mixins: mixins,
 	}
 
-	instance, err := r.client.UpdateCustomEntity(ctx, entityType, data.ID.ValueString(), updateData)
+	instance, err := r.client.UpdateCustomEntityInstance(ctx, entityType, data.ID.ValueString(), updateData)
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update custom entity, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update custom entity instance, got error: %s", err))
 		return
 	}
 
-	mapCustomEntityToModel(ctx, instance, entityType, &data, &resp.Diagnostics)
+	mapCustomEntityInstanceToModel(ctx, instance, entityType, &data, &resp.Diagnostics)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *CustomEntityResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data CustomEntityResourceModel
+func (r *CustomEntityInstanceResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data CustomEntityInstanceResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	tflog.Info(ctx, "Deleting custom entity", map[string]interface{}{
+	tflog.Info(ctx, "Deleting custom entity instance", map[string]interface{}{
 		"type": data.Type.ValueString(),
 		"id":   data.ID.ValueString(),
 	})
 
-	if err := r.client.DeleteCustomEntity(ctx, data.Type.ValueString(), data.ID.ValueString()); err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete custom entity, got error: %s", err))
+	if err := r.client.DeleteCustomEntityInstance(ctx, data.Type.ValueString(), data.ID.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete custom entity instance, got error: %s", err))
 		return
 	}
 
-	// Custom entity is now deleted and will be removed from Terraform state
+	// Custom entity instance is now deleted and will be removed from Terraform state
 }
 
-func (r *CustomEntityResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *CustomEntityInstanceResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	// Import ID format: "type:id" (e.g. "DOCUMENT:doc-123")
 	parts := strings.Split(req.ID, ":")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
@@ -394,8 +420,8 @@ func customEntityOwnerFromModel(ctx context.Context, owner types.Object) (*Custo
 	}, diags
 }
 
-// mapCustomEntityToModel converts a CustomEntityInstance API response into a CustomEntityResourceModel.
-func mapCustomEntityToModel(ctx context.Context, instance *CustomEntityInstance, entityType string, data *CustomEntityResourceModel, diags *diag.Diagnostics) {
+// mapCustomEntityInstanceToModel converts a CustomEntityInstance API response into a CustomEntityInstanceResourceModel.
+func mapCustomEntityInstanceToModel(ctx context.Context, instance *CustomEntityInstance, entityType string, data *CustomEntityInstanceResourceModel, diags *diag.Diagnostics) {
 	data.ID = types.StringValue(instance.ID)
 	data.Type = types.StringValue(entityType)
 
@@ -430,8 +456,13 @@ func mapCustomEntityToModel(ctx context.Context, instance *CustomEntityInstance,
 		data.Owner = types.ObjectNull(CustomEntityOwnerModel{}.AttributeTypes())
 	}
 
-	if instance.Mixins != "" {
-		data.Mixins = types.StringValue(instance.Mixins)
+	if instance.Mixins != nil {
+		mixinsJSON, err := json.Marshal(instance.Mixins)
+		if err != nil {
+			diags.AddError("JSON Error", fmt.Sprintf("Unable to marshal mixins to JSON: %s", err))
+		} else {
+			data.Mixins = types.StringValue(string(mixinsJSON))
+		}
 	} else {
 		data.Mixins = types.StringValue("{}")
 	}

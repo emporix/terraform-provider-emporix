@@ -2,10 +2,15 @@
 #
 # Custom entity instances are data records that live under a custom schema type,
 # registered via emporix_custom_entity_type (a distinct resource from emporix_schema).
-# The `type` argument of emporix_custom_entity must match the `id` of such a
-# emporix_custom_entity_type resource. Optionally, an emporix_schema resource
-# (types = ["CUSTOM_ENTITY"]) can additionally be defined to validate instance
-# structure, but it is not required for the basic usage shown here.
+# The `type` argument of emporix_custom_entity_instance must match the `id` of such a
+# emporix_custom_entity_type resource. To scope schema validation to just this custom
+# type, set the schema's `types` to the custom type's own id (e.g.
+# types = [emporix_custom_entity_type.document.id]) rather than the generic
+# "CUSTOM_ENTITY" literal, which would apply to every custom entity type instead.
+#
+# Each "mixins" field must be declared as an attribute in an emporix_schema attached
+# to the instance's type, and nested under a top-level key equal to that schema's own
+# `id` (not the field names directly) - see invoice_doc below.
 
 terraform {
   required_providers {
@@ -57,9 +62,7 @@ variable "emporix_client_secret" {
 }
 
 # The custom schema type that our custom entity instances will belong to.
-# Creating this also auto-generates the per-type OAuth scopes
-# custom.document_manage, custom.document_manage_own, custom.document_read,
-# custom.document_read_own (the type id is lowercased in the scope name).
+# Creating this auto-generates per-type OAuth scopes (custom.document_manage, etc.).
 resource "emporix_custom_entity_type" "document" {
   id = "DOCUMENT"
   name = {
@@ -67,14 +70,7 @@ resource "emporix_custom_entity_type" "document" {
   }
 }
 
-# Optional: define a generic schema to validate the structure of DOCUMENT
-# instances. Not required - custom entity instances work with unstructured
-# "mixins" data even without one.
-#
-# The link to the custom type is the "types" field itself: per the API docs,
-# "types" accepts either a predefined value or "any custom schema type id" -
-# so referencing the custom type's own id here (not the generic literal
-# "CUSTOM_ENTITY") is what actually attaches this schema to DOCUMENT instances.
+# Declares the mixin fields DOCUMENT instances are allowed to use.
 resource "emporix_schema" "document_fields" {
   id = "document-fields"
   name = {
@@ -99,52 +95,102 @@ resource "emporix_schema" "document_fields" {
   ]
 }
 
-# Example 1: Plain custom entity instance, no owner, no mixins.
-resource "emporix_custom_entity" "welcome_doc" {
+# Example 1: Plain custom entity instance, no mixins.
+resource "emporix_custom_entity_instance" "welcome_doc" {
   type = emporix_custom_entity_type.document.id
   name = {
     en = "Welcome Document"
   }
 }
 
-# Example 2: Custom entity instance with an explicit owner.
-# Ownership is immutable once set - changing "owner" forces replacement.
-resource "emporix_custom_entity" "employee_doc" {
-  type = emporix_custom_entity_type.document.id
+# A second custom type, distinct from DOCUMENT.
+resource "emporix_custom_entity_type" "invoice" {
+  id = "INVOICE"
   name = {
-    en = "Employee Handbook"
-  }
-  owner = {
-    type    = "EMPLOYEE"
-    user_id = "employee-123"
+    en = "Invoice"
   }
 }
 
-# Example 3: Custom entity instance with arbitrary mixin data.
-# "mixins" holds instance-specific data as a JSON-encoded string.
-resource "emporix_custom_entity" "invoice_doc" {
-  type = emporix_custom_entity_type.document.id
+# Declares the mixin fields INVOICE instances are allowed to use.
+resource "emporix_schema" "invoice_fields" {
+  id = "invoice-fields"
+  name = {
+    en = "Invoice Fields"
+  }
+  types = [emporix_custom_entity_type.invoice.id]
+
+  attributes = [
+    {
+      key = "invoiceNumber"
+      name = {
+        en = "Invoice Number"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = false
+        nullable  = true
+      }
+    },
+    {
+      key = "amount"
+      name = {
+        en = "Amount"
+      }
+      type = "DECIMAL"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = false
+        nullable  = true
+      }
+    },
+    {
+      key = "currency"
+      name = {
+        en = "Currency"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = false
+        nullable  = true
+      }
+    }
+  ]
+}
+
+# Example 2: Custom entity instance with mixin data matching invoice_fields above.
+resource "emporix_custom_entity_instance" "invoice_doc" {
+  type = emporix_custom_entity_type.invoice.id
   name = {
     en = "Invoice #1042"
   }
   mixins = jsonencode({
-    invoiceNumber = "1042"
-    amount        = 199.90
-    currency      = "EUR"
+    "invoice-fields" = {
+      invoiceNumber = "1042"
+      amount        = 199.90
+      currency      = "EUR"
+    }
   })
+
+  # Ensures the schema exists before the instance is validated against it.
+  depends_on = [emporix_schema.invoice_fields]
 }
 
 # Outputs
 output "welcome_doc" {
   description = "The welcome document instance"
   value = {
-    id         = emporix_custom_entity.welcome_doc.id
-    created_at = emporix_custom_entity.welcome_doc.created_at
-    version    = emporix_custom_entity.welcome_doc.version
+    id         = emporix_custom_entity_instance.welcome_doc.id
+    created_at = emporix_custom_entity_instance.welcome_doc.created_at
+    version    = emporix_custom_entity_instance.welcome_doc.version
   }
 }
 
 output "invoice_doc_mixins" {
   description = "The mixin data stored on the invoice document instance"
-  value       = emporix_custom_entity.invoice_doc.mixins
+  value       = emporix_custom_entity_instance.invoice_doc.mixins
 }

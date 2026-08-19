@@ -7,7 +7,7 @@ description: |-
 
 # emporix_custom_entity_type (Resource)
 
-Manages a custom schema type in Emporix - the container that custom entity instances (`emporix_custom_entity`) belong to.
+Manages a custom schema type in Emporix - the container that custom entity instances (`emporix_custom_entity_instance`) belong to.
 
 This is a distinct resource from `emporix_schema`: it registers the *type* (e.g. `"DOCUMENT"`) under which instances live at `/schema/{tenant}/custom-entities/{type}/instances`. Creating a custom entity type auto-generates a set of per-type OAuth scopes:
 
@@ -16,7 +16,7 @@ This is a distinct resource from `emporix_schema`: it registers the *type* (e.g.
 - `custom.<lowercase-id>_read`
 - `custom.<lowercase-id>_read_own`
 
-These let you grant access to a specific custom type without handing out the tenant-wide `schema.custominstance_*` scopes. Note that deleting the type does **not** remove the scopes it generated.
+These let you grant access to a specific custom type without handing out the tenant-wide `schema.custominstance_*` scopes. Deleting the type does not remove the scopes it generated.
 
 ## Example Usage
 
@@ -69,5 +69,6 @@ terraform import emporix_custom_entity_type.document DOCUMENT
 
 ## Notes
 
-- Deletion fails with an error if any `emporix_schema` or `emporix_custom_entity` resources still reference this type.
-- To attach structural validation to instances of this type, define an `emporix_schema` resource with `types` set to this resource's `id` (e.g. `types = [emporix_custom_entity_type.document.id]`) rather than the generic `CUSTOM_ENTITY` literal. See `emporix_custom_entity` and `emporix_schema` for details.
+- Deletion fails with an error if any `emporix_schema` or `emporix_custom_entity_instance` resources still reference this type.
+- To validate the `mixins` of instances of this type, define an `emporix_schema` resource with `types` set to this resource's `id` (e.g. `types = [emporix_custom_entity_type.document.id]`) rather than the generic `CUSTOM_ENTITY` literal. See `emporix_custom_entity_instance` for the required `mixins` format.
+- Instances with non-empty `mixins` require an attached schema; without one, any mixin key is rejected.

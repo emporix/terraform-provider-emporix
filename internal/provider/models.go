@@ -254,32 +254,34 @@ type CustomEntityMetadata struct {
 }
 
 // CustomEntityInstance represents a custom entity instance as returned by the API.
-// Per the API spec, "mixins" is itself a JSON-encoded string, not a nested object.
+// "mixins" is a nested JSON object (confirmed against the live API - a Java backend
+// deserializes it into a LinkedHashMap and rejects a JSON-encoded string value).
 type CustomEntityInstance struct {
-	ID       string                `json:"id"`
-	Type     string                `json:"type,omitempty"`
-	Name     map[string]string     `json:"name"`
-	Owner    *CustomEntityOwner    `json:"owner,omitempty"`
-	Mixins   string                `json:"mixins,omitempty"`
-	Media    []string              `json:"media,omitempty"`
-	Metadata *CustomEntityMetadata `json:"metadata,omitempty"`
+	ID       string                 `json:"id"`
+	Type     string                 `json:"type,omitempty"`
+	Name     map[string]string      `json:"name"`
+	Owner    *CustomEntityOwner     `json:"owner,omitempty"`
+	Mixins   map[string]interface{} `json:"mixins,omitempty"`
+	Media    []string               `json:"media,omitempty"`
+	Metadata *CustomEntityMetadata  `json:"metadata,omitempty"`
 }
 
-// CustomEntityCreate represents the creation payload for a custom entity instance
-type CustomEntityCreate struct {
-	ID     string             `json:"id,omitempty"`
-	Name   map[string]string  `json:"name"`
-	Owner  *CustomEntityOwner `json:"owner,omitempty"`
-	Mixins string             `json:"mixins,omitempty"`
+// CustomEntityInstanceCreate represents the creation payload for a custom entity instance
+type CustomEntityInstanceCreate struct {
+	ID     string                 `json:"id,omitempty"`
+	Name   map[string]string      `json:"name"`
+	Owner  *CustomEntityOwner     `json:"owner,omitempty"`
+	Mixins map[string]interface{} `json:"mixins,omitempty"`
 }
 
-// CustomEntityUpdate represents the update payload for a custom entity instance.
+// CustomEntityInstanceUpdate represents the update payload for a custom entity instance.
 // The API documents "id" as required on the PUT body (in addition to the URL path).
-type CustomEntityUpdate struct {
-	ID     string             `json:"id"`
-	Name   map[string]string  `json:"name"`
-	Owner  *CustomEntityOwner `json:"owner,omitempty"`
-	Mixins string             `json:"mixins,omitempty"`
+type CustomEntityInstanceUpdate struct {
+	ID       string                 `json:"id"`
+	Name     map[string]string      `json:"name"`
+	Owner    *CustomEntityOwner     `json:"owner,omitempty"`
+	Mixins   map[string]interface{} `json:"mixins,omitempty"`
+	Metadata *SchemaMetadataUpdate  `json:"metadata,omitempty"`
 }
 
 // CustomEntityType represents a custom schema type definition
