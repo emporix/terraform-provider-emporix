@@ -94,6 +94,9 @@ testacc-country: deps
 testacc-currency: deps
 	TF_ACC=1 go test ./internal/provider -v -run TestAccCurrency -timeout 30m
 
+testacc-customentity: deps
+	TF_ACC=1 go test ./internal/provider -v -run TestAccCustomEntity -timeout 30m
+
 # Run acceptance tests with coverage
 testacc-coverage: deps
 	TF_ACC=1 go test ./internal/provider -v -cover -coverprofile=coverage.out -timeout 30m
@@ -150,6 +153,7 @@ help:
 	@echo "  testacc-paymentmode - Run payment mode acceptance tests"
 	@echo "  testacc-country     - Run country acceptance tests"
 	@echo "  testacc-currency    - Run currency acceptance tests"
+	@echo "  testacc-customentity- Run custom entity acceptance tests"
 	@echo "  testacc-coverage    - Run acceptance tests with coverage"
 	@echo "  coverage-html       - View coverage report in browser"
 	@echo ""
