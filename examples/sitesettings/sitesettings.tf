@@ -15,7 +15,7 @@ terraform {
 provider "emporix" {
   tenant  = var.emporix_tenant
   api_url = var.emporix_api_url
-  
+
   # Use client credentials from your Custom API Key
   client_id     = var.emporix_client_id
   client_secret = var.emporix_client_secret
@@ -62,9 +62,9 @@ resource "emporix_sitesettings" "us_site" {
   default_language = "en"
   languages        = ["en", "es"]
   currency         = "USD"
-  
+
   ship_to_countries = ["US"]
-  
+
   home_base = {
     address = {
       country       = "US"
@@ -88,15 +88,15 @@ resource "emporix_sitesettings" "eu_site" {
   languages            = ["en", "de", "fr", "es", "it"]
   currency             = "EUR"
   available_currencies = ["EUR", "GBP", "CHF"]
-  
+
   ship_to_countries = [
-    "DE", "FR", "IT", "ES", "NL", 
+    "DE", "FR", "IT", "ES", "NL",
     "BE", "AT", "CH", "PL", "SE"
   ]
-  
+
   tax_calculation_address_type = "SHIPPING_ADDRESS"
   decimal_points               = 2
-  
+
   home_base = {
     address = {
       country       = "DE"
@@ -110,7 +110,7 @@ resource "emporix_sitesettings" "eu_site" {
       longitude = 13.4050
     }
   }
-  
+
   assisted_buying = {
     storefront_url = "https://shop.example.com/eu"
   }
@@ -126,9 +126,9 @@ resource "emporix_sitesettings" "uk_site" {
   default_language = "en"
   languages        = ["en"]
   currency         = "GBP"
-  
+
   ship_to_countries = ["GB"]
-  
+
   home_base = {
     address = {
       country  = "GB"
@@ -143,42 +143,129 @@ resource "emporix_sitesettings" "uk_site" {
   }
 }
 
-# Example 4: Advanced site with mixins and metadata
-resource "emporix_sitesettings" "advanced_site" {
-  code             = "advanced"
-  name             = "Advanced Site with Mixins"
+# Example 4: Advanced site with mixins
+# Mixins reference schemas managed by the emporix_schema resource, so
+# Terraform creates the schema first and passes its id/schema_url into
+# the site's mixins list.
+resource "emporix_schema" "site_branding" {
+  id = "site-branding"
+  name = {
+    en = "Site Branding"
+  }
+  types = ["SITE"]
+
+  attributes = [
+    {
+      key = "brandColor"
+      name = {
+        en = "Brand Color"
+      }
+      description = {
+        en = "Primary brand color used across the storefront, as a hex code"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = false
+        nullable  = true
+      }
+    },
+    {
+      key = "featuredProductCount"
+      name = {
+        en = "Featured Product Count"
+      }
+      description = {
+        en = "Number of products highlighted on the site's landing page"
+      }
+      type = "NUMBER"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = false
+        nullable  = true
+      }
+    }
+  ]
+}
+
+resource "emporix_schema" "site_operations" {
+  id = "site-operations"
+  name = {
+    en = "Site Operations"
+  }
+  types = ["SITE"]
+
+  attributes = [
+    {
+      key = "isFlagshipStore"
+      name = {
+        en = "Is Flagship Store"
+      }
+      description = {
+        en = "Marks this site as the brand's flagship store"
+      }
+      type = "BOOLEAN"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = false
+        nullable  = true
+      }
+    },
+    {
+      key = "siteManagerName"
+      name = {
+        en = "Site Manager Name"
+      }
+      description = {
+        en = "Full name of the employee responsible for the site"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only = false
+        localized = false
+        required  = false
+        nullable  = true
+      }
+    }
+  ]
+}
+
+resource "emporix_sitesettings" "flagship_site" {
+  code             = "flagship"
+  name             = "Flagship Site with Custom Attributes"
   active           = true
   default          = false
   default_language = "en"
   languages        = ["en"]
   currency         = "USD"
-  
+
   ship_to_countries = ["US"]
-  
+
   cart_calculation_scale = 2
-  
+
   # Mixins - unified format with schema URL and data in single objects
   mixins = [
     {
-      name       = "customFields"
-      schema_url = "https://api.example.com/schemas/custom-fields_v1.json"
+      name       = emporix_schema.site_branding.id
+      schema_url = emporix_schema.site_branding.schema_url
       fields = jsonencode({
-        brandColor    = "#FF5733"
-        customMessage = "Welcome to our store"
-        enableFeatureX = true
+        brandColor           = "#FF5733"
+        featuredProductCount = 100
       })
     },
     {
-      name       = "seoSettings"
-      schema_url = "https://api.example.com/schemas/seo_v2.json"
+      name       = emporix_schema.site_operations.id
+      schema_url = emporix_schema.site_operations.schema_url
       fields = jsonencode({
-        metaTitle       = "Best Online Store"
-        metaDescription = "Shop the best products online"
-        canonicalUrl    = "https://example.com"
+        isFlagshipStore = true
+        siteManagerName = "John Doe"
       })
     }
   ]
-  
+
   home_base = {
     address = {
       country  = "US"
@@ -188,7 +275,7 @@ resource "emporix_sitesettings" "advanced_site" {
   }
 }
 
-# Outputs
+# # Outputs
 output "us_site_code" {
   description = "US site code"
   value       = emporix_sitesettings.us_site.code

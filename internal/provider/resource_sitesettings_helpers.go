@@ -4,11 +4,47 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
+
+// orderedMixinNames returns mixin names in a deterministic order. Mixin names
+// already present in previousModel's mixins list keep their existing relative
+// order (so a stable plan doesn't get reshuffled), and any remaining mixins
+// are appended alphabetically. This avoids depending on Go's randomized
+// map iteration order, which otherwise produces a different mixins order on
+// every read/apply and trips Terraform's "produced inconsistent result after
+// apply" check whenever more than one mixin is configured.
+func orderedMixinNames(ctx context.Context, metadataMixins map[string]string, previousModel *SiteSettingsResourceModel) []string {
+	seen := make(map[string]bool, len(metadataMixins))
+	ordered := make([]string, 0, len(metadataMixins))
+
+	if previousModel != nil && !previousModel.Mixins.IsNull() && !previousModel.Mixins.IsUnknown() {
+		var previousMixins []MixinModel
+		if d := previousModel.Mixins.ElementsAs(ctx, &previousMixins, false); !d.HasError() {
+			for _, m := range previousMixins {
+				name := m.Name.ValueString()
+				if _, ok := metadataMixins[name]; ok && !seen[name] {
+					ordered = append(ordered, name)
+					seen[name] = true
+				}
+			}
+		}
+	}
+
+	remaining := make([]string, 0, len(metadataMixins)-len(ordered))
+	for name := range metadataMixins {
+		if !seen[name] {
+			remaining = append(remaining, name)
+		}
+	}
+	sort.Strings(remaining)
+
+	return append(ordered, remaining...)
+}
 
 func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSettingsResourceModel) (*SiteSettings, diag.Diagnostics) {
 	var diags diag.Diagnostics
@@ -554,9 +590,10 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 		if site.Metadata != nil && site.Mixins != nil && len(site.Metadata.Mixins) > 0 && len(site.Mixins) > 0 {
 			var mixinsList []MixinModel
 
-			// Iterate through metadata.mixins to get schema URLs
+			// Iterate through metadata.mixins (in a deterministic order) to get schema URLs
 			// Only include mixins that have both metadata AND data
-			for mixinName, schemaURL := range site.Metadata.Mixins {
+			for _, mixinName := range orderedMixinNames(ctx, site.Metadata.Mixins, previousModel) {
+				schemaURL := site.Metadata.Mixins[mixinName]
 				if mixinData, ok := site.Mixins[mixinName]; ok {
 					// Convert mixin data to JSON
 					fieldsJSON, err := json.Marshal(mixinData)

@@ -5,17 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.10.0] - 2026-08-06
+## [0.10.0] - 2026-08-20
 
 ### Added
 
-- **New Resource: emporix_price_model** - Manage price models in Emporix
+- **New Resource: emporix_custom_entity_type** - Manage custom entities types in Emporix
   - Full CRUD operations
-  - Supports `BASIC`, `VOLUME`, and `TIERED` pricing strategies via `tier_definition`
-  - Localized `name`/`description` fields
-  - Optional `force_delete` to remove a price model together with its assigned prices
+- **New Resource: emporix_custom_entity_instance** - Manage custom entities instances in Emporix
+  - Full CRUD operations, plus import using the `type:id` format
 
 [0.10.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.10.0
+
+## [0.9.4] - 2026-08-13
+
+### Fixes
+
+- **emporix_sitesettings**
+  - fixed non-deterministic ordering of the `mixins` list when more than one mixin was configured, which could cause "Provider produced inconsistent result after apply" errors or spurious reordering diffs on `terraform plan`/`apply`
+
+[0.9.4]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.9.4
+
+## [0.9.3] - 2026-08-10
+
+### Documentation
+
+- **Provider Configuration Guide**
+  - added a "Remote State Management" section covering remote backend options (Terraform Cloud/HCP Terraform, S3+DynamoDB, Azure Storage, GCS), a state security checklist, and guidance for migrating from local to remote state
+
+[0.9.3]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.9.3
 
 ## [0.9.2] - 2026-07-23
 
