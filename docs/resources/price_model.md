@@ -51,6 +51,11 @@ resource "emporix_price_model" "standard" {
       }
     ]
   }
+
+  measurement_unit = {
+    quantity  = 1
+    unit_code = "piece"
+  }
 }
 ```
 
@@ -129,6 +134,11 @@ resource "emporix_price_model" "tiered" {
       }
     ]
   }
+
+  measurement_unit = {
+    quantity  = 1
+    unit_code = "kg"
+  }
 }
 ```
 
@@ -139,14 +149,14 @@ resource "emporix_price_model" "tiered" {
 - `includes_tax` (Boolean) Whether prices calculated with this price model are gross (`true`, tax included) or net (`false`, tax excluded).
 - `name` (Map of String) Price model name as a map of language codes to translated names. Example: `{en = "Standard Pricing"}`. At least one language is required.
 - `tier_definition` (Object) Defines the pricing strategy and quantity tiers for this price model. (see [tier_definition](#tier_definition) below)
+- `measurement_unit` (Object) Measurement unit that this price model's tiers are expressed in. Required by the API even for `BASIC` price models. (see [measurement_unit](#measurement_unit) below)
 
 ### Optional
 
 - `id` (String) Unique identifier of the price model. Generated automatically if not provided. Cannot be changed after creation. Changing this forces a new resource to be created.
-- `includes_markup` (Boolean) Whether the price model operates in markup preview mode.
+- `includes_markup` (Boolean) Whether the price model operates in markup preview mode. Defaults to `false`.
 - `default` (Boolean) Whether this is the tenant's default price model. Defaults to `false`.
 - `description` (Map of String) Optional price model description as a map of language codes to translated descriptions.
-- `measurement_unit` (Object) Measurement unit that this price model's tiers are expressed in. (see [measurement_unit](#measurement_unit) below)
 - `force_delete` (Boolean) If `true`, deleting this resource also deletes (asynchronously) all prices assigned to this price model. Requires the `price.pricemodel_manage_admin` scope. Defaults to `false`.
 
 ### Nested Schema for `tier_definition`

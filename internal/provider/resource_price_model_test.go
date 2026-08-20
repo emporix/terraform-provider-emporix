@@ -45,10 +45,6 @@ func TestAccPriceModelResource_basic(t *testing.T) {
 	})
 }
 
-// TestAccPriceModelResource_optionalFields exercises default, includes_markup, and
-// description on a create - every other test relies on their schema defaults (false / null),
-// so the "!IsNull()" branches in priceModelToAPI/priceModelFromAPI for these three fields
-// have otherwise never actually run with a non-default value.
 func TestAccPriceModelResource_optionalFields(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -117,10 +113,6 @@ func TestAccPriceModelResource_volumeTiers(t *testing.T) {
 	})
 }
 
-// TestAccPriceModelResource_tiered exercises the TIERED strategy end-to-end (create, read,
-// import). BASIC/VOLUME are already covered elsewhere; this closes the one remaining
-// pricing strategy so all three documented tier_type values have actual create+import
-// coverage, not just schema validation.
 func TestAccPriceModelResource_tiered(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -138,8 +130,7 @@ func TestAccPriceModelResource_tiered(t *testing.T) {
 					resource.TestCheckResourceAttr("emporix_price_model.test", "measurement_unit.unit_code", "kg"),
 				),
 			},
-			// ImportState testing - first time any multi-tier + measurement_unit
-			// combination gets verified through import, not just BASIC's single tier.
+			// ImportState testing
 			{
 				ResourceName:                         "emporix_price_model.test",
 				ImportState:                          true,
@@ -151,12 +142,6 @@ func TestAccPriceModelResource_tiered(t *testing.T) {
 	})
 }
 
-// TestAccPriceModelResource_updateTiersAppend exercises the tier-addition pattern the
-// Emporix admin UI actually supports: appending a new tier whose quantity is strictly
-// larger than every existing tier (the UI reportedly won't let you type a smaller value
-// than the current last tier at all). No existing tier's list position changes here - this
-// isolates whether "append a larger tier" alone hits the general read-after-write revert
-// bug, independent of the mid-list-insertion question TestAccPriceModelResource_updateTiers_insertMiddle covers.
 func TestAccPriceModelResource_updateTiersAppend(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -170,8 +155,7 @@ func TestAccPriceModelResource_updateTiersAppend(t *testing.T) {
 					resource.TestCheckResourceAttr("emporix_price_model.test", "tier_definition.tiers.#", "3"),
 				),
 			},
-			// Append a new, strictly-larger tier at the end (100) - every existing tier
-			// keeps its original list position; nothing shifts.
+			// Append a new, strictly-larger tier at the end
 			{
 				Config: testAccPriceModelResourceConfig_tiers("tf-acc-tiers-append", []int{0, 10, 50, 100}),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -187,15 +171,6 @@ func TestAccPriceModelResource_updateTiersAppend(t *testing.T) {
 	})
 }
 
-// TestAccPriceModelResource_updateTiers_insertMiddle exercises inserting and removing a
-// tier in the *middle* of an existing VOLUME price model's tier list - something the
-// Emporix admin UI reportedly does not allow at all (it only lets you append a strictly
-// larger tier). This may not be a supported operation independent of the general
-// read-after-write revert bug; comparing this test's result against
-// TestAccPriceModelResource_updateTiersAppend's is what tells the two apart. Since each
-// tier's "id" is Computed and correlated by list position, inserting a tier in the middle
-// also shifts every subsequent tier's index - this verifies that shift doesn't corrupt
-// state or fail the update on top of whatever the insertion itself does.
 func TestAccPriceModelResource_updateTiers_insertMiddle(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -215,8 +190,7 @@ func TestAccPriceModelResource_updateTiers_insertMiddle(t *testing.T) {
 					resource.TestCheckResourceAttrSet("emporix_price_model.test", "tier_definition.tiers.2.id"),
 				),
 			},
-			// Insert a tier in the middle (5, between 0 and 10) - shifts the old tiers at
-			// index 1 and 2 to index 2 and 3.
+			// Insert a tier in the middle (5, between 0 and 10)
 			{
 				Config: testAccPriceModelResourceConfig_tiers("tf-acc-tiers", []int{0, 5, 10, 50}),
 				Check: resource.ComposeAggregateTestCheckFunc(
@@ -245,10 +219,6 @@ func TestAccPriceModelResource_updateTiers_insertMiddle(t *testing.T) {
 	})
 }
 
-// TestAccPriceModelResource_forceDelete exercises the force_delete=true path on Delete,
-// verifying the API actually accepts the forceDelete query param and returns a status
-// code our client handles (worry raised in review: async force-delete might return 202
-// instead of the 204 our client currently requires).
 func TestAccPriceModelResource_forceDelete(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -261,8 +231,6 @@ func TestAccPriceModelResource_forceDelete(t *testing.T) {
 					resource.TestCheckResourceAttr("emporix_price_model.test", "force_delete", "true"),
 				),
 			},
-			// No further steps - resource.Test's implicit final destroy (asserted by
-			// CheckDestroy) is what actually exercises force_delete=true on DELETE.
 		},
 	})
 }
@@ -482,8 +450,7 @@ resource "emporix_price_model" "test" {
 `, id)
 }
 
-// testAccPriceModelResourceConfig_tiers generates a VOLUME price model with an arbitrary,
-// ordered list of tier quantities - used to exercise inserting/removing tiers on update.
+// testAccPriceModelResourceConfig_tiers generates a VOLUME price model with the given tier quantities
 func testAccPriceModelResourceConfig_tiers(id string, quantities []int) string {
 	tiers := make([]string, len(quantities))
 	for i, q := range quantities {
@@ -519,9 +486,7 @@ resource "emporix_price_model" "test" {
 `, id, strings.Join(tiers, ","))
 }
 
-// testAccPriceModelResourceConfig_forceDelete generates a basic price model with
-// force_delete = true, so that resource.Test's implicit teardown exercises the
-// forceDelete=true DELETE code path.
+// testAccPriceModelResourceConfig_forceDelete generates a basic price model with force_delete = true
 func testAccPriceModelResourceConfig_forceDelete(id string) string {
 	return fmt.Sprintf(`
 resource "emporix_price_model" "test" {

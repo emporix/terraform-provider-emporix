@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -97,6 +98,11 @@ func priceModelMeasurementUnitAttrTypes() map[string]attr.Type {
 	}
 }
 
+// minQuantityKey returns a stable identity key for a tier's min_quantity (unit_code + quantity)
+func minQuantityKey(m MinQuantityModel) string {
+	return m.UnitCode.ValueString() + "|" + strconv.FormatFloat(m.Quantity.ValueFloat64(), 'g', -1, 64)
+}
+
 func (r *PriceModelResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_price_model"
 }
@@ -104,12 +110,7 @@ func (r *PriceModelResource) Metadata(ctx context.Context, req resource.Metadata
 func (r *PriceModelResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages an Emporix price model, which defines a pricing strategy (basic, volume, or tiered) " +
-			"that prices can be assigned to. See the [Price Models API](https://developer.emporix.io/api-references-1/readme/api-reference-26/price-models) for details.\n\n" +
-			"**Known upstream issue:** the Price Models API has a confirmed read-after-write consistency bug (reported to Emporix, independent of this provider) " +
-			"where a GET immediately following a successful update can briefly reflect the change and then revert to pre-update data on a later read - the reversion " +
-			"includes the API's own `metadata.version`, so it is not a caching artifact on this provider's side. This can cause `terraform apply` to report " +
-			"\"Provider produced inconsistent result after apply\" on `emporix_price_model` updates (including tier changes) even though the update was sent correctly. " +
-			"There is no workaround on the provider side; re-running `apply` after the API's data settles typically resolves it.",
+			"that prices can be assigned to. See the [Price Models API](https://developer.emporix.io/api-references-1/readme/api-reference-26/price-models) for details.",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -126,7 +127,7 @@ func (r *PriceModelResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Required:            true,
 			},
 			"includes_markup": schema.BoolAttribute{
-				MarkdownDescription: "Whether the price model operates in markup preview mode. The API requires this field to be non-null, so it defaults to `false` when not set.",
+				MarkdownDescription: "Whether the price model operates in markup preview mode. Defaults to `false`.",
 				Optional:            true,
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
@@ -166,11 +167,9 @@ func (r *PriceModelResource) Schema(ctx context.Context, req resource.SchemaRequ
 						NestedObject: schema.NestedAttributeObject{
 							Attributes: map[string]schema.Attribute{
 								"id": schema.StringAttribute{
-									MarkdownDescription: "Tier identifier, assigned automatically by the API. Shown as `(known after apply)` whenever the tier list changes, " +
-										"since Terraform's position-based tracking can't reliably predict which tier keeps which id across insertions or removals - " +
-										"the provider resolves the real id-to-tier matching at apply time.",
-									Optional: true,
-									Computed: true,
+									MarkdownDescription: "Tier identifier, assigned automatically by the API.",
+									Optional:            true,
+									Computed:            true,
 								},
 								"min_quantity": schema.SingleNestedAttribute{
 									MarkdownDescription: "Minimum ordered quantity from which this tier applies.",
@@ -231,16 +230,9 @@ func (r *PriceModelResource) Configure(ctx context.Context, req resource.Configu
 	r.client = client
 }
 
-// ModifyPlan resolves each planned tier's computed "id" by matching it against the prior
-// state's tiers by min_quantity identity, instead of the framework's default positional
-// behavior (which has no plan modifier to rely on here, since a tier's real id can only be
-// tracked by identity, not list position). Without this, Terraform would either reuse a
-// wrong id from a shifted list position, or - lacking any plan modifier at all - mark every
-// tier's id unknown on every update regardless of whether the tier list actually changed.
-// Since this runs before Update(), priceModelToAPI can read the already-correct id straight
-// off the plan with no further reconciliation needed at apply time.
+// ModifyPlan matches planned tiers against the prior state's tiers by min_quantity identity,
+// so each tier's computed "id" carries forward instead of showing (known after apply).
 func (r *PriceModelResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// Nothing to reconcile on create (no prior state) or destroy (no plan).
 	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
 		return
 	}
@@ -281,7 +273,7 @@ func (r *PriceModelResource) ModifyPlan(ctx context.Context, req resource.Modify
 		return
 	}
 
-	idByQuantity := make(map[float64]string, len(stateTiers))
+	idByKey := make(map[string]string, len(stateTiers))
 	for _, tierModel := range stateTiers {
 		if tierModel.ID.IsNull() || tierModel.ID.IsUnknown() {
 			continue
@@ -294,7 +286,7 @@ func (r *PriceModelResource) ModifyPlan(ctx context.Context, req resource.Modify
 			continue
 		}
 
-		idByQuantity[minQty.Quantity.ValueFloat64()] = tierModel.ID.ValueString()
+		idByKey[minQuantityKey(minQty)] = tierModel.ID.ValueString()
 	}
 
 	changed := false
@@ -306,7 +298,7 @@ func (r *PriceModelResource) ModifyPlan(ctx context.Context, req resource.Modify
 			continue
 		}
 
-		if id, ok := idByQuantity[minQty.Quantity.ValueFloat64()]; ok {
+		if id, ok := idByKey[minQuantityKey(minQty)]; ok {
 			planTiers[i].ID = types.StringValue(id)
 			changed = true
 		}
@@ -534,7 +526,8 @@ func priceModelFromAPI(ctx context.Context, pm *PriceModel, model *PriceModelRes
 	if pm.IncludesMarkup != nil {
 		model.IncludesMarkup = types.BoolValue(*pm.IncludesMarkup)
 	} else {
-		model.IncludesMarkup = types.BoolNull()
+		// Matches the schema default so an unset plan value doesn't diff against a null read-back.
+		model.IncludesMarkup = types.BoolValue(false)
 	}
 
 	if pm.Default != nil {
@@ -632,7 +625,6 @@ func localizedFieldToMap(v interface{}) (map[string]string, diag.Diagnostics) {
 
 	switch val := v.(type) {
 	case nil:
-		// leave empty
 	case map[string]interface{}:
 		for k, raw := range val {
 			if strVal, ok := raw.(string); ok {

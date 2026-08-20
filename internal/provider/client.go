@@ -1867,11 +1867,6 @@ func (c *EmporixClient) UpdatePriceModel(ctx context.Context, priceModelId strin
 		return nil, err
 	}
 
-	// NOTE: this API has a known read-after-write consistency bug (confirmed independently
-	// of this provider, reported to Emporix) where a GET immediately following a successful
-	// PUT can briefly reflect the update and then revert to pre-update data on a later read.
-	// The reversion includes the server's own metadata.version, so it isn't something a
-	// client-side retry can wait out - there is no reliable fix on this side of the API.
 	tflog.Debug(ctx, "Price model updated, fetching current state via GET")
 	return c.GetPriceModel(ctx, priceModelId)
 }
