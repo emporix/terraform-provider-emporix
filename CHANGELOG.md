@@ -11,10 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **New Resource: emporix_custom_entity_type** - Manage custom entities types in Emporix
   - Full CRUD operations
-  - Auto-generates per-type OAuth scopes (`custom.<lowercase-id>_manage`, `_manage_own`, `_read`, `_read_own`)
 - **New Resource: emporix_custom_entity_instance** - Manage custom entities instances in Emporix
   - Full CRUD operations, plus import using the `type:id` format
-  - Optional `owner` (`EMPLOYEE`/`CUSTOMER`) and `mixins` (JSON-encoded instance data, validated against an attached `emporix_schema`)
 
 [0.10.0]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.10.0
 
