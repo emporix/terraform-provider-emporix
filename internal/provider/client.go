@@ -2062,3 +2062,162 @@ func (c *EmporixClient) DeleteShippingMethod(ctx context.Context, site, zoneID, 
 
 	return nil
 }
+
+// CreatePriceModel creates a new price model
+func (c *EmporixClient) CreatePriceModel(ctx context.Context, priceModel *PriceModelUpsert) (*PriceModel, error) {
+	path := fmt.Sprintf("/price/%s/priceModels", strings.ToLower(c.Tenant))
+
+	// Always use Content-Language: * to work with map-based localization
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "POST", path, priceModel, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	// API returns { "id": "string" } on create
+	var createResp struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(bodyBytes, &createResp); err != nil {
+		return nil, fmt.Errorf("error decoding price model create response: %w", err)
+	}
+
+	// Fetch the created resource to sync statefile with the actual API response
+	tflog.Debug(ctx, "Price model created, fetching complete state via GET")
+	return c.GetPriceModel(ctx, createResp.ID)
+}
+
+// GetPriceModel retrieves a price model by ID
+func (c *EmporixClient) GetPriceModel(ctx context.Context, priceModelId string) (*PriceModel, error) {
+	path := fmt.Sprintf("/price/%s/priceModels/%s", strings.ToLower(c.Tenant), priceModelId)
+
+	// Always use Accept-Language: * to retrieve all translations
+	headers := map[string]string{
+		"Accept-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, &NotFoundError{}
+	}
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var priceModel PriceModel
+	if err := json.Unmarshal(bodyBytes, &priceModel); err != nil {
+		return nil, fmt.Errorf("error decoding price model response: %w", err)
+	}
+
+	return &priceModel, nil
+}
+
+// defaultReassignmentConflictMsg: the API rejects an update if no other price model is default
+// yet at that instant - a request-ordering issue confirmed by Emporix support, not a bug.
+// Retrying resolves it once the other model's write lands.
+const defaultReassignmentConflictMsg = "exactly one default price model"
+
+// defaultReassignmentRetryDelays are the backoff delays between retries, summing to 5s total.
+var defaultReassignmentRetryDelays = []time.Duration{
+	500 * time.Millisecond,
+	1 * time.Second,
+	1500 * time.Millisecond,
+	2 * time.Second,
+}
+
+// putPriceModel sends one PUT attempt and, on success, re-fetches the current state via GET.
+func (c *EmporixClient) putPriceModel(ctx context.Context, priceModelId, path string, priceModel *PriceModelUpsert, headers map[string]string) (*PriceModel, error) {
+	resp, err := c.doRequest(ctx, "PUT", path, priceModel, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	// 201 if the PUT ended up creating the resource, 204 if it updated an existing one
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent, http.StatusCreated); err != nil {
+		return nil, err
+	}
+
+	tflog.Debug(ctx, "Price model updated, fetching current state via GET")
+	return c.GetPriceModel(ctx, priceModelId)
+}
+
+// UpdatePriceModel replaces an existing price model (upsert semantics on the API side)
+func (c *EmporixClient) UpdatePriceModel(ctx context.Context, priceModelId string, priceModel *PriceModelUpsert) (*PriceModel, error) {
+	path := fmt.Sprintf("/price/%s/priceModels/%s", strings.ToLower(c.Tenant), priceModelId)
+
+	// Always use Content-Language: * to work with map-based localization
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	pm, err := c.putPriceModel(ctx, priceModelId, path, priceModel, headers)
+	for _, delay := range defaultReassignmentRetryDelays {
+		if err == nil || !strings.Contains(err.Error(), defaultReassignmentConflictMsg) {
+			break
+		}
+		time.Sleep(delay)
+		pm, err = c.putPriceModel(ctx, priceModelId, path, priceModel, headers)
+	}
+
+	return pm, err
+}
+
+// DeletePriceModel deletes a price model by ID. When forceDelete is true, the price model
+// and all prices assigned to it are deleted asynchronously (requires an admin scope).
+func (c *EmporixClient) DeletePriceModel(ctx context.Context, priceModelId string, forceDelete bool) error {
+	path := fmt.Sprintf("/price/%s/priceModels/%s", strings.ToLower(c.Tenant), priceModelId)
+	if forceDelete {
+		path += "?forceDelete=true"
+	}
+
+	resp, err := c.doRequest(ctx, "DELETE", path, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return &NotFoundError{}
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
