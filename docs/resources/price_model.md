@@ -25,6 +25,8 @@ is set to `true`.
 
 For `VOLUME` and `TIERED` price models, each tier's `min_quantity.quantity` must be unique, tiers must be in
 ascending order, the first tier must start at `0`, and all tiers must share the same `min_quantity.unit_code`.
+`measurement_unit.unit_code` must also match every tier's `min_quantity.unit_code`, for all pricing strategies.
+Additionally, every tier's `min_quantity.quantity` must be an integer multiple of `measurement_unit.quantity`.
 
 ## Example Usage
 

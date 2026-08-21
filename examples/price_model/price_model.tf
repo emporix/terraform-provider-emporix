@@ -3,8 +3,7 @@
 terraform {
   required_providers {
     emporix = {
-      source  = "emporix/emporix"
-      version = "~> 0.1"
+      source = "emporix/emporix"
     }
   }
 }

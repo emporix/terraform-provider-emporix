@@ -258,17 +258,160 @@ func TestAccPriceModelResource_requiresReplace(t *testing.T) {
 	})
 }
 
-func TestAccPriceModelResource_invalidTierType(t *testing.T) {
+func TestAccPriceModelResource_generatedId(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPriceModelDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config:      testAccPriceModelResourceConfig_invalidTierType("tf-acc-invalid"),
-				ExpectError: regexp.MustCompile(`(?i)value must be one of`),
+				Config: testAccPriceModelResourceConfig_noId(),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("emporix_price_model.test", "id"),
+					resource.TestCheckResourceAttr("emporix_price_model.test", "name.en", "Generated Id Test"),
+				),
 			},
 		},
 	})
+}
+
+func TestAccPriceModelResource_changeTierType(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPriceModelDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPriceModelResourceConfig_basic("tf-acc-change-strategy"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_price_model.test", "tier_definition.tier_type", "BASIC"),
+				),
+			},
+			{
+				Config: testAccPriceModelResourceConfig_tiers("tf-acc-change-strategy", []int{0, 10, 50}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_price_model.test", "tier_definition.tier_type", "VOLUME"),
+					resource.TestCheckResourceAttr("emporix_price_model.test", "tier_definition.tiers.#", "3"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccPriceModelResource_updateMeasurementUnit(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPriceModelDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPriceModelResourceConfig_basic("tf-acc-mu-update"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_price_model.test", "measurement_unit.quantity", "1"),
+					resource.TestCheckResourceAttr("emporix_price_model.test", "measurement_unit.unit_code", "pc"),
+				),
+			},
+			{
+				Config: testAccPriceModelResourceConfig_measurementUnit("tf-acc-mu-update", 5, "pc"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_price_model.test", "measurement_unit.quantity", "5"),
+					resource.TestCheckResourceAttr("emporix_price_model.test", "measurement_unit.unit_code", "pc"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccPriceModelResource_clearDescription(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPriceModelDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPriceModelResourceConfig_optionalFields("tf-acc-clear-description"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_price_model.test", "description.en", "Has all optional fields set"),
+				),
+			},
+			{
+				Config: testAccPriceModelResourceConfig_optionalFieldsNoDescription("tf-acc-clear-description"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("emporix_price_model.test", "description"),
+				),
+			},
+		},
+	})
+}
+
+// TestAccPriceModelResource_tierValidationErrors covers every documented tier_definition
+// validation rule as a single table, one subtest per rule. The first three regexes are the
+// exact API wording, confirmed live; the rest match the generic validation-error envelope
+// ("There is a validation error...") shared by all of them, since their exact wording hasn't
+// been confirmed against the live API.
+func TestAccPriceModelResource_tierValidationErrors(t *testing.T) {
+	cases := []struct {
+		name        string
+		config      string
+		expectedErr *regexp.Regexp
+	}{
+		{
+			name:        "invalid_tier_type",
+			config:      testAccPriceModelResourceConfig_invalidTierType("tf-acc-invalid"),
+			expectedErr: regexp.MustCompile(`(?i)value must be one of`),
+		},
+		{
+			name:        "mismatched_unit_codes",
+			config:      testAccPriceModelResourceConfig_mismatchedUnitCodes("tf-acc-unit-mismatch"),
+			expectedErr: regexp.MustCompile(`(?i)unit codes must have the same values`),
+		},
+		{
+			name:        "non_multiple_tier_quantity",
+			config:      testAccPriceModelResourceConfig_nonMultipleTierQuantity("tf-acc-non-multiple"),
+			expectedErr: regexp.MustCompile(`(?i)must\s+be\s+a\s+multiple\s+of\s+the\s+measurement\s+unit`),
+		},
+		{
+			name:        "duplicate_tier_quantity",
+			config:      testAccPriceModelResourceConfig_tiers("tf-acc-dup-tier", []int{0, 10, 10}),
+			expectedErr: regexp.MustCompile(`(?i)validation error`),
+		},
+		{
+			name:        "tiers_not_ascending",
+			config:      testAccPriceModelResourceConfig_tiers("tf-acc-tiers-order", []int{0, 50, 10}),
+			expectedErr: regexp.MustCompile(`(?i)validation error`),
+		},
+		{
+			name:        "first_tier_not_zero",
+			config:      testAccPriceModelResourceConfig_tiers("tf-acc-first-tier", []int{10, 20}),
+			expectedErr: regexp.MustCompile(`(?i)validation error`),
+		},
+		{
+			name:        "basic_tier_nonzero",
+			config:      testAccPriceModelResourceConfig_basicTiers("tf-acc-basic-nonzero", []int{5}),
+			expectedErr: regexp.MustCompile(`(?i)validation error`),
+		},
+		{
+			name:        "basic_multiple_tiers",
+			config:      testAccPriceModelResourceConfig_basicTiers("tf-acc-basic-multi", []int{0, 10}),
+			expectedErr: regexp.MustCompile(`(?i)validation error`),
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			resource.Test(t, resource.TestCase{
+				PreCheck:                 func() { testAccPreCheck(t) },
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					{
+						Config:      tc.config,
+						ExpectError: tc.expectedErr,
+					},
+				},
+			})
+		})
+	}
 }
 
 func testAccPriceModelResourceConfig_basic(id string) string {
@@ -301,6 +444,65 @@ resource "emporix_price_model" "test" {
 `, id)
 }
 
+func testAccPriceModelResourceConfig_noId() string {
+	return `
+resource "emporix_price_model" "test" {
+  includes_tax = true
+
+  name = {
+    en = "Generated Id Test"
+  }
+
+  tier_definition = {
+    tier_type = "BASIC"
+    tiers = [
+      {
+        min_quantity = {
+          quantity  = 0
+          unit_code = "pc"
+        }
+      }
+    ]
+  }
+
+  measurement_unit = {
+    quantity  = 1
+    unit_code = "pc"
+  }
+}
+`
+}
+
+func testAccPriceModelResourceConfig_measurementUnit(id string, quantity int, unitCode string) string {
+	return fmt.Sprintf(`
+resource "emporix_price_model" "test" {
+  id           = %[1]q
+  includes_tax = true
+
+  name = {
+    en = "Standard Pricing"
+  }
+
+  tier_definition = {
+    tier_type = "BASIC"
+    tiers = [
+      {
+        min_quantity = {
+          quantity  = 0
+          unit_code = %[3]q
+        }
+      }
+    ]
+  }
+
+  measurement_unit = {
+    quantity  = %[2]d
+    unit_code = %[3]q
+  }
+}
+`, id, quantity, unitCode)
+}
+
 func testAccPriceModelResourceConfig_optionalFields(id string) string {
 	return fmt.Sprintf(`
 resource "emporix_price_model" "test" {
@@ -315,6 +517,41 @@ resource "emporix_price_model" "test" {
 
   description = {
     en = "Has all optional fields set"
+  }
+
+  tier_definition = {
+    tier_type = "BASIC"
+    tiers = [
+      {
+        min_quantity = {
+          quantity  = 0
+          unit_code = "pc"
+        }
+      }
+    ]
+  }
+
+  measurement_unit = {
+    quantity  = 1
+    unit_code = "pc"
+  }
+}
+`, id)
+}
+
+// testAccPriceModelResourceConfig_optionalFieldsNoDescription matches _optionalFields but with
+// description removed, so a test can isolate clearing description without also flipping default
+// (which, being Optional+Computed with a static default, would revert to false if just omitted).
+func testAccPriceModelResourceConfig_optionalFieldsNoDescription(id string) string {
+	return fmt.Sprintf(`
+resource "emporix_price_model" "test" {
+  id              = %[1]q
+  includes_tax    = true
+  includes_markup = true
+  default         = true
+
+  name = {
+    en = "Optional Fields Test"
   }
 
   tier_definition = {
@@ -486,6 +723,42 @@ resource "emporix_price_model" "test" {
 `, id, strings.Join(tiers, ","))
 }
 
+// testAccPriceModelResourceConfig_basicTiers generates a BASIC price model with the given tier quantities
+func testAccPriceModelResourceConfig_basicTiers(id string, quantities []int) string {
+	tiers := make([]string, len(quantities))
+	for i, q := range quantities {
+		tiers[i] = fmt.Sprintf(`
+      {
+        min_quantity = {
+          quantity  = %d
+          unit_code = "pc"
+        }
+      }`, q)
+	}
+
+	return fmt.Sprintf(`
+resource "emporix_price_model" "test" {
+  id           = %[1]q
+  includes_tax = true
+
+  name = {
+    en = "Basic Pricing"
+  }
+
+  tier_definition = {
+    tier_type = "BASIC"
+    tiers = [%[2]s
+    ]
+  }
+
+  measurement_unit = {
+    quantity  = 1
+    unit_code = "pc"
+  }
+}
+`, id, strings.Join(tiers, ","))
+}
+
 // testAccPriceModelResourceConfig_forceDelete generates a basic price model with force_delete = true
 func testAccPriceModelResourceConfig_forceDelete(id string) string {
 	return fmt.Sprintf(`
@@ -542,6 +815,72 @@ resource "emporix_price_model" "test" {
 
   measurement_unit = {
     quantity  = 1
+    unit_code = "pc"
+  }
+}
+`, id)
+}
+
+func testAccPriceModelResourceConfig_mismatchedUnitCodes(id string) string {
+	return fmt.Sprintf(`
+resource "emporix_price_model" "test" {
+  id           = %[1]q
+  includes_tax = true
+
+  name = {
+    en = "Mismatched Unit Codes"
+  }
+
+  tier_definition = {
+    tier_type = "BASIC"
+    tiers = [
+      {
+        min_quantity = {
+          quantity  = 0
+          unit_code = "pc"
+        }
+      }
+    ]
+  }
+
+  measurement_unit = {
+    quantity  = 1
+    unit_code = "kg"
+  }
+}
+`, id)
+}
+
+func testAccPriceModelResourceConfig_nonMultipleTierQuantity(id string) string {
+	return fmt.Sprintf(`
+resource "emporix_price_model" "test" {
+  id           = %[1]q
+  includes_tax = true
+
+  name = {
+    en = "Non-Multiple Tier Quantity"
+  }
+
+  tier_definition = {
+    tier_type = "VOLUME"
+    tiers = [
+      {
+        min_quantity = {
+          quantity  = 0
+          unit_code = "pc"
+        }
+      },
+      {
+        min_quantity = {
+          quantity  = 7
+          unit_code = "pc"
+        }
+      }
+    ]
+  }
+
+  measurement_unit = {
+    quantity  = 10
     unit_code = "pc"
   }
 }

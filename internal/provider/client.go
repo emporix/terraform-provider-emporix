@@ -2136,15 +2136,21 @@ func (c *EmporixClient) GetPriceModel(ctx context.Context, priceModelId string) 
 	return &priceModel, nil
 }
 
-// UpdatePriceModel replaces an existing price model (upsert semantics on the API side)
-func (c *EmporixClient) UpdatePriceModel(ctx context.Context, priceModelId string, priceModel *PriceModelUpsert) (*PriceModel, error) {
-	path := fmt.Sprintf("/price/%s/priceModels/%s", strings.ToLower(c.Tenant), priceModelId)
+// defaultReassignmentConflictMsg: the API rejects an update if no other price model is default
+// yet at that instant - a request-ordering issue confirmed by Emporix support, not a bug.
+// Retrying resolves it once the other model's write lands.
+const defaultReassignmentConflictMsg = "exactly one default price model"
 
-	// Always use Content-Language: * to work with map-based localization
-	headers := map[string]string{
-		"Content-Language": "*",
-	}
+// defaultReassignmentRetryDelays are the backoff delays between retries, summing to 5s total.
+var defaultReassignmentRetryDelays = []time.Duration{
+	500 * time.Millisecond,
+	1 * time.Second,
+	1500 * time.Millisecond,
+	2 * time.Second,
+}
 
+// putPriceModel sends one PUT attempt and, on success, re-fetches the current state via GET.
+func (c *EmporixClient) putPriceModel(ctx context.Context, priceModelId, path string, priceModel *PriceModelUpsert, headers map[string]string) (*PriceModel, error) {
 	resp, err := c.doRequest(ctx, "PUT", path, priceModel, headers)
 	if err != nil {
 		return nil, err
@@ -2163,6 +2169,27 @@ func (c *EmporixClient) UpdatePriceModel(ctx context.Context, priceModelId strin
 
 	tflog.Debug(ctx, "Price model updated, fetching current state via GET")
 	return c.GetPriceModel(ctx, priceModelId)
+}
+
+// UpdatePriceModel replaces an existing price model (upsert semantics on the API side)
+func (c *EmporixClient) UpdatePriceModel(ctx context.Context, priceModelId string, priceModel *PriceModelUpsert) (*PriceModel, error) {
+	path := fmt.Sprintf("/price/%s/priceModels/%s", strings.ToLower(c.Tenant), priceModelId)
+
+	// Always use Content-Language: * to work with map-based localization
+	headers := map[string]string{
+		"Content-Language": "*",
+	}
+
+	pm, err := c.putPriceModel(ctx, priceModelId, path, priceModel, headers)
+	for _, delay := range defaultReassignmentRetryDelays {
+		if err == nil || !strings.Contains(err.Error(), defaultReassignmentConflictMsg) {
+			break
+		}
+		time.Sleep(delay)
+		pm, err = c.putPriceModel(ctx, priceModelId, path, priceModel, headers)
+	}
+
+	return pm, err
 }
 
 // DeletePriceModel deletes a price model by ID. When forceDelete is true, the price model
