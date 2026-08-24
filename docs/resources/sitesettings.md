@@ -58,6 +58,7 @@ resource "emporix_sitesettings" "eu_site" {
       latitude  = 52.5200
       longitude = 13.4050
     }
+    timezone = "Europe/Berlin"
   }
 }
 ```
@@ -92,6 +93,7 @@ resource "emporix_sitesettings" "full_site" {
       latitude  = 40.7568658044745
       longitude = -73.9858713458565
     }
+    timezone = "America/New_York"
   }
   
   assisted_buying = {
@@ -191,6 +193,7 @@ Required:
 Optional:
 
 - `location` (Object) Geographic location. See [Location](#nested-schema-for-home_baselocation) below.
+- `timezone` (String) IANA timezone identifier for the site home base location (e.g. `Europe/Paris`, `America/New_York`, `UTC`). If not specified, no timezone is set. The value is validated by the API - an invalid or unrecognized identifier is rejected with an error during `apply`.
 
 ### Nested Schema for `home_base.address`
 

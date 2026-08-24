@@ -23,6 +23,7 @@ type SiteSettings struct {
 type HomeBase struct {
 	Address  *Address  `json:"address,omitempty"`
 	Location *Location `json:"location,omitempty"`
+	Timezone string    `json:"timezone,omitempty"`
 }
 
 type Address struct {

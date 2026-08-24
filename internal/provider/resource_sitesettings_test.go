@@ -146,6 +146,66 @@ func TestAccSiteSettingsResource_includesTax(t *testing.T) {
 	})
 }
 
+func TestAccSiteSettingsResource_homeBaseTimezone(t *testing.T) {
+	code := fmt.Sprintf("test-tz-%d", time.Now().Unix())
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckSiteSettingsDestroy,
+		Steps: []resource.TestStep{
+			// Create with a timezone set
+			{
+				Config: testAccSiteSettingsResourceConfigWithTimezone(code, "Europe/Berlin"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "code", code),
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "home_base.timezone", "Europe/Berlin"),
+				),
+			},
+			// Update to a different timezone
+			{
+				Config: testAccSiteSettingsResourceConfigWithTimezone(code, "America/New_York"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "code", code),
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "home_base.timezone", "America/New_York"),
+				),
+			},
+			// Remove the timezone
+			{
+				Config: testAccSiteSettingsResourceConfigBasic(code),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_sitesettings.test", "code", code),
+					resource.TestCheckNoResourceAttr("emporix_sitesettings.test", "home_base.timezone"),
+				),
+			},
+		},
+	})
+}
+
+// testAccSiteSettingsResourceConfigWithTimezone generates a site settings configuration with a home_base timezone
+func testAccSiteSettingsResourceConfigWithTimezone(code string, timezone string) string {
+	return fmt.Sprintf(`
+resource "emporix_sitesettings" "test" {
+  code             = %[1]q
+  name             = "Test Site"
+  active           = true
+  default_language = "en"
+  languages        = ["en"]
+  currency         = "USD"
+  ship_to_countries = ["US"]
+
+  home_base = {
+    address = {
+      zip_code = "10001"
+      city     = "New York"
+      country  = "US"
+    }
+    timezone = %[2]q
+  }
+}
+`, code, timezone)
+}
+
 func TestAccSiteSettingsResource_requiresReplace(t *testing.T) {
 	code1 := fmt.Sprintf("test-replace1-%d", time.Now().Unix())
 	code2 := fmt.Sprintf("test-replace2-%d", time.Now().Unix())

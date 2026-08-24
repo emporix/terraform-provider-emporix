@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-08-24
+
+### Added
+
+- **emporix_sitesettings**
+  - added `timezone` to the `home_base` block - IANA timezone identifier for the site's home base location (e.g. `Europe/Paris`, `America/New_York`, `UTC`)
+
+[0.10.1]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.10.1
+
 ## [0.10.0] - 2026-08-20
 
 ### Added
