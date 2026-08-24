@@ -81,7 +81,6 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 	diags.Append(model.ShipToCountries.ElementsAs(ctx, &shipToCountries, false)...)
 	site.ShipToCountries = shipToCountries
 
-
 	// Tax Calculation Address Type
 	if !model.TaxCalculationAddressType.IsNull() {
 		site.TaxCalculationAddressType = model.TaxCalculationAddressType.ValueString()
@@ -142,6 +141,11 @@ func (r *SiteSettingsResource) terraformToApi(ctx context.Context, model *SiteSe
 				if v, ok := locationAttrs["longitude"].(types.Float64); ok && !v.IsNull() {
 					site.HomeBase.Location.Longitude = v.ValueFloat64()
 				}
+			}
+
+			// Timezone
+			if v, ok := homeBaseAttrs["timezone"].(types.String); ok && !v.IsNull() {
+				site.HomeBase.Timezone = v.ValueString()
 			}
 		}
 	}
@@ -368,6 +372,25 @@ func (r *SiteSettingsResource) buildPatchData(ctx context.Context, plan *SiteSet
 				}
 			}
 
+			// Timezone - handle both setting values and nulling
+			planTimezone, planTimezoneOk := homeBaseAttrs["timezone"].(types.String)
+			stateTimezone, stateTimezoneOk := stateHomeBaseAttrs["timezone"].(types.String)
+
+			timezoneChanged := false
+			if planTimezoneOk && stateTimezoneOk {
+				timezoneChanged = !planTimezone.Equal(stateTimezone)
+			} else if planTimezoneOk != stateTimezoneOk {
+				timezoneChanged = true
+			}
+
+			if timezoneChanged {
+				if planTimezoneOk && !planTimezone.IsNull() {
+					homeBase["timezone"] = planTimezone.ValueString()
+				} else {
+					homeBase["timezone"] = nil
+				}
+			}
+
 			if len(homeBase) > 0 {
 				patchData["homeBase"] = homeBase
 			}
@@ -525,6 +548,9 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 			})
 		}
 
+		// Timezone
+		homeBaseAttrs["timezone"] = stringOrNull(site.HomeBase.Timezone)
+
 		homeBaseObj, d := types.ObjectValue(map[string]attr.Type{
 			"address": types.ObjectType{
 				AttrTypes: map[string]attr.Type{
@@ -542,6 +568,7 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 					"longitude": types.Float64Type,
 				},
 			},
+			"timezone": types.StringType,
 		}, homeBaseAttrs)
 		diags.Append(d...)
 		model.HomeBase = homeBaseObj
@@ -563,6 +590,7 @@ func (r *SiteSettingsResource) apiToTerraform(ctx context.Context, site *SiteSet
 					"longitude": types.Float64Type,
 				},
 			},
+			"timezone": types.StringType,
 		})
 	}
 

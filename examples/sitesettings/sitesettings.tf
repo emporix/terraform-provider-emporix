@@ -109,6 +109,7 @@ resource "emporix_sitesettings" "eu_site" {
       latitude  = 52.5200
       longitude = 13.4050
     }
+    timezone = "Europe/Berlin"
   }
 
   assisted_buying = {

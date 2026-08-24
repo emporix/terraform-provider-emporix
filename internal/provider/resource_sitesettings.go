@@ -168,6 +168,10 @@ func (r *SiteSettingsResource) Schema(ctx context.Context, req resource.SchemaRe
 							},
 						},
 					},
+					"timezone": schema.StringAttribute{
+						Description: "IANA timezone identifier for the site home base location (e.g. Europe/Paris, America/New_York, UTC).",
+						Optional:    true,
+					},
 				},
 			},
 			"assisted_buying": schema.SingleNestedAttribute{
