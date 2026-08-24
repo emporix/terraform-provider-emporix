@@ -46,7 +46,7 @@ variable "emporix_client_secret" {
 }
 
 # Example 1: Basic price model - flat price regardless of ordered quantity
-resource "emporix_price_model" "basic" {
+resource "emporix_price_models" "basic" {
   id           = "standard-pricing"
   includes_tax = true
   default      = true
@@ -75,7 +75,7 @@ resource "emporix_price_model" "basic" {
 }
 
 # Example 2: Volume pricing - lower unit price the more you buy in total
-resource "emporix_price_model" "volume" {
+resource "emporix_price_models" "volume" {
   id           = "volume-pricing"
   includes_tax = true
 
@@ -118,7 +118,7 @@ resource "emporix_price_model" "volume" {
 }
 
 # Example 3: Tiered pricing - price calculated per tier range the total quantity falls into
-resource "emporix_price_model" "tiered" {
+resource "emporix_price_models" "tiered" {
   id           = "tiered-pricing"
   includes_tax = false
 
@@ -153,10 +153,10 @@ resource "emporix_price_model" "tiered" {
 # Outputs
 output "basic_price_model_id" {
   description = "ID of the basic price model"
-  value       = emporix_price_model.basic.id
+  value       = emporix_price_models.basic.id
 }
 
 output "volume_price_model_tiers" {
-  description = "Tiers (including API-assigned tier IDs) of the volume price model"
-  value       = emporix_price_model.volume.tier_definition.tiers
+  description = "Tiers of the volume price model"
+  value       = emporix_price_models.volume.tier_definition.tiers
 }

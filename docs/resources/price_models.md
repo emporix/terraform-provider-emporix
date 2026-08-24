@@ -1,11 +1,11 @@
 ---
-page_title: "emporix_price_model Resource - terraform-provider-emporix"
+page_title: "emporix_price_models Resource - terraform-provider-emporix"
 subcategory: ""
 description: |-
   Manages price models that define a pricing strategy for prices.
 ---
 
-# emporix_price_model (Resource)
+# emporix_price_models (Resource)
 
 Manages an Emporix price model. A price model defines the pricing strategy (`BASIC`, `VOLUME`, or `TIERED`) and the
 quantity tiers that prices assigned to it are calculated against. See the
@@ -33,7 +33,7 @@ Additionally, every tier's `min_quantity.quantity` must be an integer multiple o
 ### Basic Price Model (Flat Pricing)
 
 ```terraform
-resource "emporix_price_model" "standard" {
+resource "emporix_price_models" "standard" {
   id           = "standard-pricing"
   includes_tax = true
 
@@ -64,7 +64,7 @@ resource "emporix_price_model" "standard" {
 ### Volume Pricing
 
 ```terraform
-resource "emporix_price_model" "volume" {
+resource "emporix_price_models" "volume" {
   id           = "volume-pricing"
   includes_tax = true
   default      = false
@@ -111,7 +111,7 @@ resource "emporix_price_model" "volume" {
 ### Tiered Pricing
 
 ```terraform
-resource "emporix_price_model" "tiered" {
+resource "emporix_price_models" "tiered" {
   id           = "tiered-pricing"
   includes_tax = false
 
@@ -201,7 +201,7 @@ Required nested block list.
 Price models can be imported using their ID:
 
 ```shell
-terraform import emporix_price_model.standard standard-pricing
+terraform import emporix_price_models.standard standard-pricing
 ```
 
 ## Required OAuth Scopes
@@ -221,7 +221,7 @@ The unique identifier of the price model.
 
 ```terraform
 output "standard_price_model_id" {
-  value = emporix_price_model.standard.id
+  value = emporix_price_models.standard.id
 }
 ```
 
@@ -231,6 +231,6 @@ The tier definition, including any tier IDs assigned by the API.
 
 ```terraform
 output "volume_tiers" {
-  value = emporix_price_model.volume.tier_definition.tiers
+  value = emporix_price_models.volume.tier_definition.tiers
 }
 ```

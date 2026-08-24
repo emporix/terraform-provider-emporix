@@ -20,21 +20,21 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces
-var _ resource.Resource = &PriceModelResource{}
-var _ resource.ResourceWithImportState = &PriceModelResource{}
-var _ resource.ResourceWithModifyPlan = &PriceModelResource{}
+var _ resource.Resource = &PriceModelsResource{}
+var _ resource.ResourceWithImportState = &PriceModelsResource{}
+var _ resource.ResourceWithModifyPlan = &PriceModelsResource{}
 
-func NewPriceModelResource() resource.Resource {
-	return &PriceModelResource{}
+func NewPriceModelsResource() resource.Resource {
+	return &PriceModelsResource{}
 }
 
-// PriceModelResource defines the resource implementation
-type PriceModelResource struct {
+// PriceModelsResource defines the resource implementation
+type PriceModelsResource struct {
 	client *EmporixClient
 }
 
-// PriceModelResourceModel describes the resource data model
-type PriceModelResourceModel struct {
+// PriceModelsResourceModel describes the resource data model
+type PriceModelsResourceModel struct {
 	ID              types.String `tfsdk:"id"`
 	IncludesTax     types.Bool   `tfsdk:"includes_tax"`
 	IncludesMarkup  types.Bool   `tfsdk:"includes_markup"`
@@ -103,11 +103,11 @@ func minQuantityKey(m MinQuantityModel) string {
 	return m.UnitCode.ValueString() + "|" + strconv.FormatFloat(m.Quantity.ValueFloat64(), 'g', -1, 64)
 }
 
-func (r *PriceModelResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_price_model"
+func (r *PriceModelsResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_price_models"
 }
 
-func (r *PriceModelResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *PriceModelsResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages an Emporix price model, which defines a pricing strategy (basic, volume, or tiered) " +
 			"that prices can be assigned to. See the [Price Models API](https://developer.emporix.io/api-references-1/readme/api-reference-26/price-models) for details.",
@@ -213,7 +213,7 @@ func (r *PriceModelResource) Schema(ctx context.Context, req resource.SchemaRequ
 	}
 }
 
-func (r *PriceModelResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *PriceModelsResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -232,18 +232,18 @@ func (r *PriceModelResource) Configure(ctx context.Context, req resource.Configu
 
 // ModifyPlan matches planned tiers against the prior state's tiers by min_quantity identity,
 // so each tier's computed "id" carries forward instead of showing (known after apply).
-func (r *PriceModelResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+func (r *PriceModelsResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
 		return
 	}
 
-	var state PriceModelResourceModel
+	var state PriceModelsResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	var plan PriceModelResourceModel
+	var plan PriceModelsResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -324,8 +324,8 @@ func (r *PriceModelResource) ModifyPlan(ctx context.Context, req resource.Modify
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("tier_definition"), newTierDefObj)...)
 }
 
-func (r *PriceModelResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var plan PriceModelResourceModel
+func (r *PriceModelsResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan PriceModelsResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -352,8 +352,8 @@ func (r *PriceModelResource) Create(ctx context.Context, req resource.CreateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *PriceModelResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var state PriceModelResourceModel
+func (r *PriceModelsResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state PriceModelsResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -378,8 +378,8 @@ func (r *PriceModelResource) Read(ctx context.Context, req resource.ReadRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-func (r *PriceModelResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan PriceModelResourceModel
+func (r *PriceModelsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan PriceModelsResourceModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
@@ -406,8 +406,8 @@ func (r *PriceModelResource) Update(ctx context.Context, req resource.UpdateRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *PriceModelResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var state PriceModelResourceModel
+func (r *PriceModelsResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state PriceModelsResourceModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
@@ -423,12 +423,12 @@ func (r *PriceModelResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 }
 
-func (r *PriceModelResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+func (r *PriceModelsResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// priceModelToAPI converts a PriceModelResourceModel (Terraform plan) into a PriceModelUpsert (API payload)
-func priceModelToAPI(ctx context.Context, model *PriceModelResourceModel) (*PriceModelUpsert, diag.Diagnostics) {
+// priceModelToAPI converts a PriceModelsResourceModel (Terraform plan) into a PriceModelUpsert (API payload)
+func priceModelToAPI(ctx context.Context, model *PriceModelsResourceModel) (*PriceModelUpsert, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	pm := &PriceModelUpsert{
@@ -515,9 +515,9 @@ func priceModelToAPI(ctx context.Context, model *PriceModelResourceModel) (*Pric
 	return pm, diags
 }
 
-// priceModelFromAPI populates a PriceModelResourceModel (Terraform state) from a PriceModel (API response).
+// priceModelFromAPI populates a PriceModelsResourceModel (Terraform state) from a PriceModel (API response).
 // It never touches model.ForceDelete, which is a client-side-only field the API doesn't return.
-func priceModelFromAPI(ctx context.Context, pm *PriceModel, model *PriceModelResourceModel) diag.Diagnostics {
+func priceModelFromAPI(ctx context.Context, pm *PriceModel, model *PriceModelsResourceModel) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	model.ID = types.StringValue(pm.ID)
