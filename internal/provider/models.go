@@ -388,3 +388,51 @@ type WebhookEventSubscriptionUpdateResult struct {
 	Status    string `json:"status"`
 	Message   string `json:"message,omitempty"`
 }
+
+// PriceModel represents a price model retrieved from the Price Models API
+type PriceModel struct {
+	ID              string           `json:"id,omitempty"`
+	IncludesTax     bool             `json:"includesTax"`
+	IncludesMarkup  *bool            `json:"includesMarkup,omitempty"`
+	Default         *bool            `json:"default,omitempty"`
+	Name            interface{}      `json:"name"`                  // string or map[string]string
+	Description     interface{}      `json:"description,omitempty"` // string or map[string]string
+	TierDefinition  *TierDefinition  `json:"tierDefinition"`
+	MeasurementUnit *MeasurementUnit `json:"measurementUnit,omitempty"`
+}
+
+// PriceModelUpsert represents the create/replace payload for a price model
+type PriceModelUpsert struct {
+	ID              string           `json:"id,omitempty"`
+	IncludesTax     bool             `json:"includesTax"`
+	IncludesMarkup  *bool            `json:"includesMarkup,omitempty"`
+	Default         *bool            `json:"default,omitempty"`
+	Name            interface{}      `json:"name"`
+	Description     interface{}      `json:"description,omitempty"`
+	TierDefinition  *TierDefinition  `json:"tierDefinition"`
+	MeasurementUnit *MeasurementUnit `json:"measurementUnit,omitempty"`
+}
+
+// TierDefinition defines the pricing strategy (BASIC, VOLUME or TIERED) of a price model
+type TierDefinition struct {
+	TierType string `json:"tierType"`
+	Tiers    []Tier `json:"tiers"`
+}
+
+// Tier represents a single pricing tier within a tier definition
+type Tier struct {
+	ID          string       `json:"id,omitempty"`
+	MinQuantity *MinQuantity `json:"minQuantity"`
+}
+
+// MinQuantity represents the minimum ordered quantity that a tier applies from
+type MinQuantity struct {
+	Quantity float64 `json:"quantity"`
+	UnitCode string  `json:"unitCode"`
+}
+
+// MeasurementUnit represents the measurement unit a price model's tiers are expressed in
+type MeasurementUnit struct {
+	Quantity float64 `json:"quantity"`
+	UnitCode string  `json:"unitCode"`
+}
