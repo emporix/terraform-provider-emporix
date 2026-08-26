@@ -33,10 +33,15 @@ type WebhookResource struct {
 }
 
 type EventConfigModel struct {
+	Id             types.String            `tfsdk:"id"`
 	EventType      types.String            `tfsdk:"event_type"`
 	DestinationUrl types.String            `tfsdk:"destination_url"`
 	SecretKey      types.String            `tfsdk:"secret_key"`
 	Headers        map[string]types.String `tfsdk:"headers"`
+	Filter         types.String            `tfsdk:"filter"`
+	ExcludedFields []types.String          `tfsdk:"excluded_fields"`
+	Active         types.Bool              `tfsdk:"active"`
+	Name           types.String            `tfsdk:"name"`
 	Subscribed     types.Bool              `tfsdk:"subscribed"`
 }
 
@@ -147,12 +152,19 @@ func (r *WebhookResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Optional:            true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
+						"id": schema.StringAttribute{
+							MarkdownDescription: "Stable server-generated identifier of this event configuration entry. Omitted on create (client-supplied ids are rejected). Immutable once assigned.",
+							Computed:            true,
+							PlanModifiers: []planmodifier.String{
+								stringplanmodifier.UseStateForUnknown(),
+							},
+						},
 						"event_type": schema.StringAttribute{
-							MarkdownDescription: "The Emporix event type (e.g., 'order.created', 'customer.registered').",
+							MarkdownDescription: "Unique identifier of the event. Multiple entries may share the same `event_type`.",
 							Required:            true,
 						},
 						"destination_url": schema.StringAttribute{
-							MarkdownDescription: "Override destination URL for this specific event type. If empty, uses the parent destination_url.",
+							MarkdownDescription: "Destination URL where the event should be sent. Has higher priority than `destination_url` on the root level - each event can have a separate destination URL. If empty, uses the parent destination_url.",
 							Optional:            true,
 							Computed:            true,
 							PlanModifiers: []planmodifier.String{
@@ -160,14 +172,36 @@ func (r *WebhookResource) Schema(ctx context.Context, req resource.SchemaRequest
 							},
 						},
 						"secret_key": schema.StringAttribute{
-							MarkdownDescription: "Override secret key for this specific event type. Omitted from state for Svix_SHARED provider.",
+							MarkdownDescription: "Secret key used to sign the message for this entry. Has higher priority than `secret_key` on the root level - each event can have a separate secret key. Omitted from state for SVIX_SHARED provider.",
 							Optional:            true,
 							Sensitive:           true,
 						},
 						"headers": schema.MapAttribute{
-							MarkdownDescription: "HTTP headers to include for this specific event type.",
+							MarkdownDescription: "Key-value pairs decorating the outgoing HTTP POST request as headers for this entry (size limit 10). Has higher priority than `headers` on the root level - each event can have separate headers.",
 							Optional:            true,
 							ElementType:         types.StringType,
+						},
+						"filter": schema.StringAttribute{
+							MarkdownDescription: "Optional Jayway JsonPath predicate evaluated against the event payload. When omitted or empty, the entry matches every event of the given event_type. Invalid expressions are rejected by the API.",
+							Optional:            true,
+						},
+						"excluded_fields": schema.ListAttribute{
+							MarkdownDescription: "Optional per-entry field exclusion list; only non-blank top-level field names are allowed. Omit or leave null to inherit the event-subscription excludedFields. An empty list overrides the subscription exclusions with no exclusions for this target.",
+							Optional:            true,
+							ElementType:         types.StringType,
+						},
+						"active": schema.BoolAttribute{
+							MarkdownDescription: "Per-endpoint activation switch. When false, events for this endpoint are dropped without filter evaluation, delivery, or retries; other endpoints are not affected. Distinct from `subscribed` below, which controls the tenant-wide event subscription. Defaults to true.",
+							Optional:            true,
+							Computed:            true,
+							Default:             booldefault.StaticBool(true),
+						},
+						"name": schema.StringAttribute{
+							MarkdownDescription: "Optional user-facing label for this entry (e.g. \"ERP integration\"). Purely descriptive - it has no impact on delivery. Maximum 255 characters.",
+							Optional:            true,
+							Validators: []validator.String{
+								stringvalidator.LengthAtMost(255),
+							},
 						},
 						"subscribed": schema.BoolAttribute{
 							MarkdownDescription: "Indicates whether the tenant is actually subscribed to this event type (controls actual message delivery, separately from the URL/headers overrides above). Defaults to true.",
@@ -417,13 +451,56 @@ func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.Valid
 		return
 	}
 
-	if normalizeProvider(providerType.ValueString()) != "HTTP" {
-		return
-	}
+	provider := normalizeProvider(providerType.ValueString())
 
 	var destinationUrl types.String
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("destination_url"), &destinationUrl)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if provider == "SVIX" || provider == "SVIX_SHARED" {
+		if !destinationUrl.IsNull() && !destinationUrl.IsUnknown() && destinationUrl.ValueString() != "" {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("destination_url"),
+				"destination_url not used for this provider",
+				fmt.Sprintf("provider_type %q does not use destination_url - Svix endpoints are managed on the Svix "+
+					"side, not through this resource, and the Emporix API rejects a config of this type that includes "+
+					"it. Remove destination_url.", providerType.ValueString()),
+			)
+		}
+
+		// apiKey is documented as optional but the API rejects a SVIX config without one.
+		var secretKey types.String
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("secret_key"), &secretKey)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		secretKeySet := !secretKey.IsNull() && !secretKey.IsUnknown() && secretKey.ValueString() != ""
+
+		if provider == "SVIX_SHARED" && secretKeySet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("secret_key"),
+				"secret_key not used for this provider",
+				"provider_type \"SVIX_SHARED\" does not accept secret_key - its configuration is managed entirely "+
+					"by Emporix, and the API rejects a config of this type that includes one. Remove secret_key.",
+			)
+		}
+		if provider == "SVIX" && !secretKeySet {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("secret_key"),
+				"Missing secret_key",
+				"provider_type \"SVIX\" requires secret_key (sent as the Svix apiKey) - the Emporix API rejects a "+
+					"SVIX config without it, even though it's documented as optional. Note the value must be a real "+
+					"API key from your Svix account: Emporix authenticates against Svix's API with it, so a "+
+					"placeholder string will fail later with a 500 \"Client 'svix': Unauthorized\" rather than a "+
+					"clean validation error.",
+			)
+		}
+		return
+	}
+
+	if provider != "HTTP" {
 		return
 	}
 
@@ -474,9 +551,8 @@ func stringToNull(s string) types.String {
 	return types.StringNull()
 }
 
-// Provider-specific configuration:
-// - HTTP/SVIX_SHARED: destinationUrl, secretKey, headers, eventsConfiguration
-// - SVIX: apiKey only
+// Config fields differ per provider: HTTP sends destinationUrl/secretKey/headers/
+// eventsConfiguration, SVIX sends apiKey only, SVIX_SHARED sends nothing.
 func buildNestedConfigFromModel(model WebhookResourceModel, providerType string) *NestedConfigCreate {
 	normalizedProvider := normalizeProvider(providerType)
 
@@ -484,14 +560,9 @@ func buildNestedConfigFromModel(model WebhookResourceModel, providerType string)
 
 	switch normalizedProvider {
 	case "SVIX_SHARED":
-		if !model.SecretKeyString.IsNull() {
-			config.ApiKey = model.SecretKeyString.ValueString()
-		}
+		// Config schema is empty (EmptyConfiguration) - nothing to send.
 	case "SVIX":
-		if !model.DestinationUrl.IsNull() {
-			config.DestinationUrl = model.DestinationUrl.ValueString()
-		}
-
+		// SvixConfig only accepts apiKey; no destinationUrl (endpoints live on Svix's side).
 		if !model.SecretKeyString.IsNull() {
 			config.ApiKey = model.SecretKeyString.ValueString()
 		}
@@ -537,21 +608,61 @@ func buildEventConfigNestedFromModel(models []EventConfigModel) []EventConfig {
 
 	events := make([]EventConfig, 0, len(models))
 	for _, m := range models {
-		event := EventConfig{
-			EventType: m.EventType.ValueString(),
-		}
-		if !m.DestinationUrl.IsNull() {
-			event.DestinationUrl = m.DestinationUrl.ValueString()
-		}
-		if !m.SecretKey.IsNull() {
-			event.SecretKey = m.SecretKey.ValueString()
-		}
-		if len(m.Headers) > 0 {
-			event.Headers = buildHeaderFieldValueMapFromModel(m.Headers)
-		}
-		events = append(events, event)
+		events = append(events, buildOneEventConfigFromModel(m))
 	}
 	return events
+}
+
+// Never sets Id: the API assigns it, and updates address it via the PATCH path, not the payload.
+func buildOneEventConfigFromModel(m EventConfigModel) EventConfig {
+	event := EventConfig{
+		EventType: m.EventType.ValueString(),
+	}
+	if !m.DestinationUrl.IsNull() {
+		event.DestinationUrl = m.DestinationUrl.ValueString()
+	}
+	if !m.SecretKey.IsNull() {
+		event.SecretKey = m.SecretKey.ValueString()
+	}
+	if len(m.Headers) > 0 {
+		event.Headers = buildHeaderFieldValueMapFromModel(m.Headers)
+	}
+	if !m.Filter.IsNull() {
+		event.Filter = m.Filter.ValueString()
+	}
+	if !m.Name.IsNull() {
+		event.Name = m.Name.ValueString()
+	}
+	if !m.Active.IsNull() && !m.Active.IsUnknown() {
+		active := m.Active.ValueBool()
+		event.Active = &active
+	}
+	event.ExcludedFields = excludedFieldsFromModel(m.ExcludedFields)
+	return event
+}
+
+// A pointer lets nil mean "omit" and &[]string{} mean "explicitly clear".
+func excludedFieldsFromModel(fields []types.String) *[]string {
+	if fields == nil {
+		return nil
+	}
+	values := make([]string, 0, len(fields))
+	for _, f := range fields {
+		values = append(values, f.ValueString())
+	}
+	return &values
+}
+
+// excludedFieldsToModel is the read-side inverse of excludedFieldsFromModel.
+func excludedFieldsToModel(fields *[]string) []types.String {
+	if fields == nil {
+		return nil
+	}
+	values := make([]types.String, 0, len(*fields))
+	for _, f := range *fields {
+		values = append(values, types.StringValue(f))
+	}
+	return values
 }
 
 func webhookToModel(api *WebhookConfigGet) WebhookResourceModel {
@@ -584,9 +695,18 @@ func webhookToModel(api *WebhookConfigGet) WebhookResourceModel {
 			model.EventsConfiguration = make([]EventConfigModel, 0, len(config.EventsConfiguration))
 			for _, event := range config.EventsConfiguration {
 				eventModel := EventConfigModel{
+					Id:             stringToNull(event.Id),
 					EventType:      types.StringValue(event.EventType),
 					DestinationUrl: stringToNull(event.DestinationUrl),
 					SecretKey:      stringToNull(event.SecretKey),
+					Filter:         stringToNull(event.Filter),
+					Name:           stringToNull(event.Name),
+					ExcludedFields: excludedFieldsToModel(event.ExcludedFields),
+				}
+				if event.Active != nil {
+					eventModel.Active = types.BoolValue(*event.Active)
+				} else {
+					eventModel.Active = types.BoolValue(true)
 				}
 				if len(event.Headers) > 0 {
 					eventModel.Headers = make(map[string]types.String, len(event.Headers))
@@ -622,7 +742,8 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 		})
 	}
 
-	if !plan.DestinationUrl.Equal(state.DestinationUrl) {
+	// Svix doesn't use destinationUrl (see buildNestedConfigFromModel).
+	if provider != "SVIX" && provider != "SVIX_SHARED" && !plan.DestinationUrl.Equal(state.DestinationUrl) {
 		patches = append(patches, WebhookConfigPartialUpdates{
 			Op:    "UPSERT",
 			Path:  configPrefix + "/destinationUrl",
@@ -630,9 +751,10 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 		})
 	}
 
-	if !plan.SecretKeyString.Equal(state.SecretKeyString) {
+	// SVIX_SHARED's config schema is empty (no apiKey field, unlike SVIX) - nothing to patch.
+	if provider != "SVIX_SHARED" && !plan.SecretKeyString.Equal(state.SecretKeyString) {
 		secretKeyPath := configPrefix + "/secretKey"
-		if provider == "SVIX" || provider == "SVIX_SHARED" {
+		if provider == "SVIX" {
 			secretKeyPath = configPrefix + "/apiKey"
 		}
 		patches = append(patches, WebhookConfigPartialUpdates{
@@ -658,25 +780,54 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 		}
 	}
 
-	planEvents := buildEventConfigNestedFromModel(plan.EventsConfiguration)
-	stateEvents := buildEventConfigNestedFromModel(state.EventsConfiguration)
-	if !reflect.DeepEqual(planEvents, stateEvents) {
-		eventsPath := configPrefix + "/eventsConfiguration"
-		if len(plan.EventsConfiguration) == 0 {
-			patches = append(patches, WebhookConfigPartialUpdates{
-				Op:   "REMOVE",
-				Path: eventsPath,
-			})
-		} else {
+	patches = append(patches, buildEventsConfigurationEntryPatches(
+		configPrefix+"/eventsConfigurationEntry", plan.EventsConfiguration, state.EventsConfiguration)...)
+
+	return patches
+}
+
+// Diffs plan vs state by position and emits per-entry PATCH ops (id's UseStateForUnknown
+// means plan[i].Id already equals state[i].Id wherever both exist).
+func buildEventsConfigurationEntryPatches(entryPath string, plan, state []EventConfigModel) []WebhookConfigPartialUpdates {
+	var patches []WebhookConfigPartialUpdates
+
+	n := len(plan)
+	if len(state) > n {
+		n = len(state)
+	}
+
+	for i := 0; i < n; i++ {
+		switch {
+		case i >= len(state):
+			// New: no id yet, server assigns one.
 			patches = append(patches, WebhookConfigPartialUpdates{
 				Op:    "UPSERT",
-				Path:  eventsPath,
-				Value: planEvents,
+				Path:  entryPath,
+				Value: buildOneEventConfigFromModel(plan[i]),
 			})
+		case i >= len(plan):
+			// Removed trailing entry.
+			patches = append(patches, WebhookConfigPartialUpdates{
+				Op:   "REMOVE",
+				Path: entryPath + "/" + state[i].Id.ValueString(),
+			})
+		default:
+			if !eventEntryContentEqual(plan[i], state[i]) {
+				patches = append(patches, WebhookConfigPartialUpdates{
+					Op:    "UPSERT",
+					Path:  entryPath + "/" + plan[i].Id.ValueString(),
+					Value: buildOneEventConfigFromModel(plan[i]),
+				})
+			}
 		}
 	}
 
 	return patches
+}
+
+// Ignores Id (identity, not content) and Subscribed (drives a separate API).
+func eventEntryContentEqual(a, b EventConfigModel) bool {
+	return reflect.DeepEqual(buildOneEventConfigFromModel(a), buildOneEventConfigFromModel(b))
 }
 
 func preserveTopLevelFields(result, state *WebhookResourceModel) {
@@ -713,55 +864,85 @@ func mergeEventsFromPlan(result *WebhookResourceModel, plan *WebhookResourceMode
 	reorderEventsToMatch(&result.EventsConfiguration, plan.EventsConfiguration)
 }
 
+// Backfills fields the API omitted (e.g. secrets) from source into result, correlating
+// by id where known and falling back to position for entries without one yet.
 func mergeEventsFromSource(result *[]EventConfigModel, source []EventConfigModel) {
-	sourceMap := make(map[string]EventConfigModel, len(source))
-	for _, srcEvent := range source {
-		sourceMap[srcEvent.EventType.ValueString()] = srcEvent
+	resultIndexById := make(map[string]int, len(*result))
+	for i, e := range *result {
+		if id := e.Id.ValueString(); id != "" {
+			resultIndexById[id] = i
+		}
 	}
 
-	for i := range *result {
-		eventType := (*result)[i].EventType.ValueString()
-		if srcEvent, ok := sourceMap[eventType]; ok {
-			if (*result)[i].SecretKey.IsNull() && !srcEvent.SecretKey.IsNull() {
-				(*result)[i].SecretKey = srcEvent.SecretKey
+	for i, srcEvent := range source {
+		idx, ok := 0, false
+		if id := srcEvent.Id.ValueString(); !srcEvent.Id.IsNull() && !srcEvent.Id.IsUnknown() && id != "" {
+			idx, ok = resultIndexById[id]
+		}
+		if !ok {
+			if i >= len(*result) {
+				continue
 			}
-			if len((*result)[i].Headers) == 0 && len(srcEvent.Headers) > 0 {
-				(*result)[i].Headers = srcEvent.Headers
-			}
-			if (*result)[i].DestinationUrl.IsNull() && !srcEvent.DestinationUrl.IsNull() {
-				(*result)[i].DestinationUrl = srcEvent.DestinationUrl
-			}
-			if (*result)[i].Subscribed.IsNull() && !srcEvent.Subscribed.IsNull() {
-				(*result)[i].Subscribed = srcEvent.Subscribed
-			}
+			idx = i
+		}
+
+		resEvent := &(*result)[idx]
+		if resEvent.SecretKey.IsNull() && !srcEvent.SecretKey.IsNull() {
+			resEvent.SecretKey = srcEvent.SecretKey
+		}
+		if len(resEvent.Headers) == 0 && len(srcEvent.Headers) > 0 {
+			resEvent.Headers = srcEvent.Headers
+		}
+		if resEvent.DestinationUrl.IsNull() && !srcEvent.DestinationUrl.IsNull() {
+			resEvent.DestinationUrl = srcEvent.DestinationUrl
+		}
+		if resEvent.Subscribed.IsNull() && !srcEvent.Subscribed.IsNull() {
+			resEvent.Subscribed = srcEvent.Subscribed
 		}
 	}
 }
 
+// Restores reference's order onto result (an API read, whose order the server controls).
 func reorderEventsToMatch(result *[]EventConfigModel, reference []EventConfigModel) {
 	if len(reference) == 0 || len(*result) == 0 {
 		return
 	}
-	resultByType := make(map[string]EventConfigModel, len(*result))
-	for _, e := range *result {
-		resultByType[e.EventType.ValueString()] = e
+
+	resultIndexById := make(map[string]int, len(*result))
+	for i, e := range *result {
+		if id := e.Id.ValueString(); id != "" {
+			resultIndexById[id] = i
+		}
 	}
+
+	usedResultIndex := make(map[int]struct{}, len(*result))
 	reordered := make([]EventConfigModel, 0, len(*result))
-	used := make(map[string]struct{}, len(reference))
-	for _, refEvent := range reference {
-		refType := refEvent.EventType.ValueString()
-		if e, ok := resultByType[refType]; ok {
+
+	for i, refEvent := range reference {
+		idx, ok := 0, false
+		if id := refEvent.Id.ValueString(); !refEvent.Id.IsNull() && !refEvent.Id.IsUnknown() && id != "" {
+			idx, ok = resultIndexById[id]
+		}
+		if !ok && i < len(*result) {
+			idx, ok = i, true
+		}
+		if !ok {
+			continue
+		}
+		if _, already := usedResultIndex[idx]; already {
+			continue
+		}
+		reordered = append(reordered, (*result)[idx])
+		usedResultIndex[idx] = struct{}{}
+	}
+
+	// Append any remaining API-returned entries not already placed, to avoid dropping data.
+	for i, e := range *result {
+		if _, ok := usedResultIndex[i]; !ok {
 			reordered = append(reordered, e)
-			used[refType] = struct{}{}
 		}
 	}
-	// Append any remaining events to avoid dropping API-returned data.
-	for _, e := range *result {
-		t := e.EventType.ValueString()
-		if _, ok := used[t]; !ok {
-			reordered = append(reordered, e)
-		}
-	}
+
 	*result = reordered
 }
 
