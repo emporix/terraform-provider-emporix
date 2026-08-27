@@ -12,6 +12,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
+// uniqueTestID appends a nanosecond timestamp so a leftover from an interrupted prior run
+// (whose CheckDestroy never got to clean it up) can't collide with the current run.
+func uniqueTestID(base string) string {
+	return fmt.Sprintf("%s-%d", base, time.Now().UnixNano())
+}
+
 func TestAccPriceModelsResource_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -52,9 +58,8 @@ func TestAccPriceModelsResource_optionalFields(t *testing.T) {
 		CheckDestroy:             testAccCheckPriceModelsDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPriceModelsResourceConfig_optionalFields("tf-acc-optional"),
+				Config: testAccPriceModelsResourceConfig_optionalFields(uniqueTestID("tf-acc-optional")),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("emporix_price_models.test", "default", "true"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "includes_markup", "true"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "description.en", "Has all optional fields set"),
 				),
@@ -323,19 +328,20 @@ func TestAccPriceModelsResource_updateMeasurementUnit(t *testing.T) {
 }
 
 func TestAccPriceModelsResource_clearDescription(t *testing.T) {
+	id := uniqueTestID("tf-acc-clear-description")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckPriceModelsDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPriceModelsResourceConfig_optionalFields("tf-acc-clear-description"),
+				Config: testAccPriceModelsResourceConfig_optionalFields(id),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "description.en", "Has all optional fields set"),
 				),
 			},
 			{
-				Config: testAccPriceModelsResourceConfig_optionalFieldsNoDescription("tf-acc-clear-description"),
+				Config: testAccPriceModelsResourceConfig_optionalFieldsNoDescription(id),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckNoResourceAttr("emporix_price_models.test", "description"),
 				),
@@ -506,7 +512,6 @@ resource "emporix_price_models" "test" {
   id              = %[1]q
   includes_tax    = true
   includes_markup = true
-  default         = true
 
   name = {
     en = "Optional Fields Test"
@@ -545,7 +550,6 @@ resource "emporix_price_models" "test" {
   id              = %[1]q
   includes_tax    = true
   includes_markup = true
-  default         = true
 
   name = {
     en = "Optional Fields Test"

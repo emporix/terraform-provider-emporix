@@ -12,8 +12,7 @@ quantity tiers that prices assigned to it are calculated against. See the
 [Price Models API](https://developer.emporix.io/api-references-1/readme/api-reference-26/price-models) for details.
 
 **Delete Behavior:** When you remove the resource from Terraform or run `terraform destroy`, the price model is
-**deleted** from Emporix. If prices are still assigned to the price model, the delete fails unless `force_delete`
-is set to `true`.
+**deleted** from Emporix. If prices are still assigned to the price model, the delete fails unless `force_delete` is set to `true`. The tenant's current default price model can never be deleted, even with `force_delete` - a different price model must be assigned as the default first.
 
 ## Pricing Strategies
 
