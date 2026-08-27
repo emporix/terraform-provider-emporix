@@ -9,6 +9,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 func TestAccWebhookResource_basic(t *testing.T) {
@@ -18,7 +20,7 @@ func TestAccWebhookResource_basic(t *testing.T) {
 		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
 	})
 
-	url := testWebhookDestinationURL(t)
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -107,7 +109,7 @@ func TestAccWebhookResource_withSecretKey(t *testing.T) {
 		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
 	})
 
-	url := testWebhookDestinationURL(t)
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -133,7 +135,7 @@ func TestAccWebhookResource_withHeaders(t *testing.T) {
 		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
 	})
 
-	url := testWebhookDestinationURL(t)
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -161,7 +163,7 @@ func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
 		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
 	})
 
-	url := testWebhookDestinationURL(t)
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -186,16 +188,13 @@ func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
 	})
 }
 
-// TestAccWebhookResource_eventsConfigurationFromVariable is a regression test for a bug where
-// assigning events_configuration from a Terraform variable (whose declared type omits the
-// Computed attributes destination_url/secret_key/subscribed) made Terraform widen the value to
-// the resource schema's type and mark the whole list Unknown, crashing ValidateConfig. The same
-// literal value written directly in the resource block never went through that widening, so the
-// bug only showed up when the value came through a variable/module input. PlanOnly is enough
-// here: the crash happened during ValidateConfig, before any API call. ExpectNonEmptyPlan is
-// needed since this step never applies, so the plan is a genuine "+create", not empty.
+// Regression test: a variable-sourced events_configuration (whose object type omits the
+// Computed attributes) used to make Terraform widen the value and mark it Unknown,
+// crashing ValidateConfig - only via a variable/module input, not a literal in-line value.
+// PlanOnly since the crash happens pre-API-call; ExpectNonEmptyPlan because this step
+// never applies, so the plan is a genuine "+create".
 func TestAccWebhookResource_eventsConfigurationFromVariable(t *testing.T) {
-	url := testWebhookDestinationURL(t)
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -245,7 +244,7 @@ func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
 	})
 
 	code := "test_webhook_events_lifecycle"
-	url := testWebhookDestinationURL(t)
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -275,9 +274,7 @@ func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
 					),
 				),
 			},
-			// Step 2: drop "product.updated" - confirm it's actually removed from the
-			// API-side configuration and its subscription was unsubscribed, while the
-			// other two remain untouched.
+			// Step 2: drop "product.updated" - confirm it's removed and unsubscribed, others untouched.
 			{
 				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", url), true,
 					[]testEventConfig{
@@ -319,7 +316,7 @@ func TestAccWebhookResource_eventDestinationUrlFallback(t *testing.T) {
 	})
 
 	code := "test_webhook_dest_url_fallback"
-	parentUrl := testWebhookDestinationURL(t)
+	parentUrl := "https://example.com"
 	overrideUrl := parentUrl + "?target=2"
 
 	resource.Test(t, resource.TestCase{
@@ -327,9 +324,7 @@ func TestAccWebhookResource_eventDestinationUrlFallback(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckWebhookDestroy,
 		Steps: []resource.TestStep{
-			// Step 1: one event omits destination_url entirely and must fall back to the
-			// parent destination_url, both in state and on the API side. A second event
-			// with an explicit override must keep its own value.
+			// Step 1: one event omits destination_url (falls back to parent), another overrides it.
 			{
 				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", parentUrl), true,
 					[]testEventConfig{
@@ -343,9 +338,7 @@ func TestAccWebhookResource_eventDestinationUrlFallback(t *testing.T) {
 					testAccCheckEventDestinationUrl(code, "customer.created", overrideUrl),
 				),
 			},
-			// Step 2: an event that explicitly sets destination_url = "" must also fall
-			// back to the parent, instead of sending a blank value to the API (which the
-			// API rejects with "destinationUrl must not be blank").
+			// Step 2: destination_url = "" must also fall back to the parent, not send blank.
 			{
 				Config: fmt.Sprintf(`
 resource "emporix_webhook" "test" {
@@ -378,7 +371,7 @@ func TestAccWebhookResource_subscribedToggle(t *testing.T) {
 	})
 
 	code := "test_webhook_subscribed_toggle"
-	url := testWebhookDestinationURL(t)
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -403,10 +396,7 @@ func TestAccWebhookResource_subscribedToggle(t *testing.T) {
 					),
 				),
 			},
-			// Step 2: set subscribed = false on "order.created" while keeping its
-			// destination_url configured. This must unsubscribe the event on the API
-			// side (via UNSUBSCRIBE) WITHOUT removing its events_configuration entry -
-			// unlike dropping the event entirely, the override configuration stays intact.
+			// Step 2: subscribed = false must UNSUBSCRIBE without removing the entry itself.
 			{
 				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", url), true,
 					[]testEventConfig{
@@ -453,7 +443,7 @@ func TestAccWebhookResource_requiresReplace(t *testing.T) {
 		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
 	})
 
-	url := testWebhookDestinationURL(t)
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -486,7 +476,7 @@ func TestAccWebhookResource_multiTargetSameEventType(t *testing.T) {
 	})
 
 	code := "test_webhook_multi_target"
-	url := testWebhookDestinationURL(t)
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -635,9 +625,7 @@ func testAccCheckWebhookEventsConfigurationCount(code string, want int) resource
 	}
 }
 
-// testAccCheckEventSubscriptionStatus verifies, directly against the API, that the given
-// event types are actually SUBSCRIBED and that the given event types are NOT SUBSCRIBED
-// (either absent from the list, or reported with a non-SUBSCRIBED status).
+// Verifies, against the API, that wantSubscribed are SUBSCRIBED and wantNotSubscribed aren't.
 func testAccCheckEventSubscriptionStatus(wantSubscribed, wantNotSubscribed []string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		client, err := getTestClient()
@@ -785,16 +773,6 @@ func keys(m map[string]struct{}) []string {
 }
 
 // Must be reachable: the API HEAD/OPTIONS-checks destination_url and rejects placeholders.
-func testWebhookDestinationURL(t *testing.T) string {
-	t.Helper()
-	url := os.Getenv("EMPORIX_WEBHOOK_TEST_URL")
-	if url == "" {
-		t.Fatal("EMPORIX_WEBHOOK_TEST_URL must be set to a real, reachable URL (responds " +
-			"successfully to HEAD or OPTIONS) for webhook acceptance tests")
-	}
-	return url
-}
-
 // testAccCheckWebhookDestroy verifies that webhooks have been destroyed
 func testAccCheckWebhookDestroy(s *terraform.State) error {
 	ctx := context.Background()
@@ -832,4 +810,108 @@ func testAccCheckWebhookDestroy(s *terraform.State) error {
 	}
 
 	return nil
+}
+
+// --- buildEventsConfigurationEntryPatches: eventMatchKey-based correlation ---
+// Guards against matching plan/state by raw position, which misattributes content onto
+// the wrong server-side id when an entry is inserted/removed/reordered mid-list.
+
+func eventEntry(eventType, name string) EventConfigModel {
+	return EventConfigModel{EventType: types.StringValue(eventType), Name: types.StringValue(name)}
+}
+
+func eventEntryWithId(id, eventType, name string) EventConfigModel {
+	e := eventEntry(eventType, name)
+	e.Id = types.StringValue(id)
+	return e
+}
+
+func TestBuildEventsConfigurationEntryPatches_InsertInMiddle(t *testing.T) {
+	state := []EventConfigModel{
+		eventEntryWithId("1", "order.created", "a"),
+		eventEntryWithId("2", "customer.created", "b"),
+		eventEntryWithId("3", "product.updated", "c"),
+	}
+	plan := []EventConfigModel{
+		eventEntry("order.created", "a"),
+		eventEntry("order.created", "x"), // new, inserted in the middle
+		eventEntry("customer.created", "b"),
+		eventEntry("product.updated", "c"),
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 1 {
+		t.Fatalf("got %d patches, want exactly 1 (clean create for the inserted entry): %+v", len(patches), patches)
+	}
+	p := patches[0]
+	if p.Op != "UPSERT" || p.Path != "/configuration/http/eventsConfigurationEntry" {
+		t.Fatalf("unexpected patch: %+v", p)
+	}
+	ec := p.Value.(EventConfig)
+	if ec.Name != "x" {
+		t.Fatalf("patch is for the wrong entry: %+v", ec)
+	}
+}
+
+func TestBuildEventsConfigurationEntryPatches_RemoveInMiddle(t *testing.T) {
+	state := []EventConfigModel{
+		eventEntryWithId("1", "order.created", "a"),
+		eventEntryWithId("2", "customer.created", "b"),
+		eventEntryWithId("3", "product.updated", "c"),
+	}
+	plan := []EventConfigModel{
+		eventEntry("order.created", "a"),
+		eventEntry("product.updated", "c"),
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 1 {
+		t.Fatalf("got %d patches, want exactly 1 (clean remove of id=2): %+v", len(patches), patches)
+	}
+	p := patches[0]
+	if p.Op != "REMOVE" || p.Path != "/configuration/http/eventsConfigurationEntry/2" {
+		t.Fatalf("unexpected patch: %+v", p)
+	}
+}
+
+func TestBuildEventsConfigurationEntryPatches_PureReorder_NoPatches(t *testing.T) {
+	state := []EventConfigModel{
+		eventEntryWithId("1", "order.created", "a"),
+		eventEntryWithId("2", "customer.created", "b"),
+		eventEntryWithId("3", "product.updated", "c"),
+	}
+	plan := []EventConfigModel{
+		eventEntry("product.updated", "c"),
+		eventEntry("customer.created", "b"),
+		eventEntry("order.created", "a"),
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 0 {
+		t.Fatalf("got %d patches, want 0 for a pure reorder with unchanged content: %+v", len(patches), patches)
+	}
+}
+
+func TestBuildEventsConfigurationEntryPatches_DuplicateKeysFIFO(t *testing.T) {
+	// Same event_type, no name - must pair up in encounter order, not arbitrarily.
+	state := []EventConfigModel{
+		eventEntryWithId("1", "product.created", ""),
+		eventEntryWithId("2", "product.created", ""),
+	}
+	plan := []EventConfigModel{
+		eventEntry("product.created", ""),
+		{EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("https://changed.example.com")},
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 1 {
+		t.Fatalf("got %d patches, want exactly 1 (only the second entry's destination_url changed): %+v", len(patches), patches)
+	}
+	if patches[0].Path != "/configuration/http/eventsConfigurationEntry/2" {
+		t.Fatalf("expected the second (later) duplicate to be addressed by id=2, got: %+v", patches[0])
+	}
 }

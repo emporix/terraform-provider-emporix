@@ -16,7 +16,8 @@ Manages a webhook subscription configuration in Emporix. Supports `SVIX_SHARED` 
 resource "emporix_webhook" "order_webhook" {
   code          = "orderWebhook"
   provider_type = "HTTP"
-  destination_url = "<URL>"
+  # Must be a real, reachable URL
+  destination_url = "<REACHABLE_URL>"
   active        = true
 
   secret_key = "my-secret-signing-key"
@@ -58,7 +59,7 @@ resource "emporix_webhook" "svix_shared_webhook" {
 resource "emporix_webhook" "multi_event_webhook" {
   code          = "multiEventWebhook"
   provider_type = "HTTP"
-  destination_url = "<URL>"
+  destination_url = "<REACHABLE_URL>"
   active        = true
 
   secret_key = "default-secret-key"
@@ -66,7 +67,7 @@ resource "emporix_webhook" "multi_event_webhook" {
   events_configuration = [
     {
       event_type      = "order.created"
-      destination_url = "https://orders.webhook.site/endpoint"
+      destination_url = "<REACHABLE_URL>/orders"
       secret_key      = "orders-secret-key"
       headers = {
         X-Event-Group = "orders"
@@ -81,7 +82,7 @@ resource "emporix_webhook" "multi_event_webhook" {
     },
     {
       event_type      = "product.updated"
-      destination_url = "https://products.webhook.site/endpoint"
+      destination_url = "<REACHABLE_URL>/products"
     }
   ]
 }
@@ -93,19 +94,19 @@ resource "emporix_webhook" "multi_event_webhook" {
 resource "emporix_webhook" "multi_target_webhook" {
   code          = "multiTargetWebhook"
   provider_type = "HTTP"
-  destination_url = "<URL>"
+  destination_url = "<REACHABLE_URL>"
   active        = true
 
   events_configuration = [
     {
       event_type      = "product.created"
       name            = "products -> catalog sync"
-      destination_url = "https://catalog-sync.example.com/webhook"
+      destination_url = "<REACHABLE_URL>?target=catalog-sync"
     },
     {
       event_type      = "product.created"
       name            = "premium products -> merchandising review"
-      destination_url = "https://merchandising-review.example.com/webhook"
+      destination_url = "<REACHABLE_URL>?target=merchandising-review"
       filter          = "$[?(@.code == 'PREMIUM-001')]"
       excluded_fields = ["internalNotes"]
     }
@@ -125,8 +126,8 @@ resource "emporix_webhook" "multi_target_webhook" {
 - `active` (Boolean) Whether this webhook configuration is active. Only one configuration per tenant can be active at a time. The API requires at least one active webhook, so if this is the last active webhook, deactivating it will be prevented. Defaults to `false`.
 - `destination_url` (String) "Destination URL where event should be sent." (API description) `HTTP`-only, and must be reachable via `HEAD`/`OPTIONS`. Not used by `SVIX`/`SVIX_SHARED`.
 - `secret_key` (String, Sensitive) `HTTP` (sent as `secretKey`): "Optional secret key which could be used to sign the message" (HMAC SHA-256). `SVIX` (sent as `apiKey`): "API Key for connecting to SVIX" - required in practice and must be a real Svix account key (Emporix authenticates against Svix's API with it; a placeholder fails with a 500). Not accepted by `SVIX_SHARED`.
-- `headers` (Map of String) HTTP headers to include in webhook requests. Keys and values are strings.
-- `events_configuration` (Block List) Event-specific configuration. Allows different handling for different event types. (see [below for nested schema](#nestedblockfor-events_configuration))
+- `headers` (Map of String) HTTP headers to include in webhook requests. Keys and values are strings. `HTTP`-only - rejected by the API for `SVIX`/`SVIX_SHARED`.
+- `events_configuration` (Block List) Event-specific configuration. Allows different handling for different event types. `HTTP`-only - rejected by the API for `SVIX`/`SVIX_SHARED`. (see [below for nested schema](#nestedblockfor-events_configuration))
 
 ### Read-Only
 
@@ -143,7 +144,7 @@ Required:
 Optional:
 
 - `destination_url` (String) Destination URL where the event should be sent. Has higher priority than `destination_url` on the root level - each event can have a separate destination URL. If empty, uses the parent `destination_url`.
-- `secret_key` (String, Sensitive) Secret key used to sign the message for this entry. Has higher priority than `secret_key` on the root level - each event can have a separate secret key. Omitted from state for `SVIX_SHARED` provider.
+- `secret_key` (String, Sensitive) Secret key used to sign the message for this entry. Has higher priority than `secret_key` on the root level - each event can have a separate secret key.
 - `headers` (Map of String) Key-value pairs decorating the outgoing HTTP POST request as headers for this entry (size limit `10`). Has higher priority than `headers` on the root level - each event can have separate headers.
 - `filter` (String) Optional Jayway JsonPath predicate evaluated against the event payload. When omitted or empty, the entry matches every event of the given `event_type`. Invalid expressions are rejected by the API.
 - `excluded_fields` (List of String) Optional per-entry field exclusion list; only non-blank top-level field names are allowed. Omit or leave null to inherit the event-subscription `excludedFields`. An empty list overrides the subscription exclusions with no exclusions for this target.
@@ -185,7 +186,7 @@ In Terraform configuration:
 resource "emporix_webhook" "imported" {
   code          = "orderWebhook"
   provider_type = "HTTP"
-  destination_url = "https://webhook.site/endpoint"
+  destination_url = "<REACHABLE_URL>" # must match the imported webhook's actual, reachable URL
   active        = true
 }
 
@@ -197,9 +198,9 @@ resource "emporix_webhook" "imported" {
 
 ### Active Constraint
 
-The Emporix API requires at least one active webhook configuration per tenant. This constraint is enforced during:
+The Emporix API requires at least one active webhook configuration per tenant.
 
-1. **Create**: If no other active webhooks exist and you try to create an inactive webhook, `active` is automatically set to `true`.
+1. **Create**: the API rejects creating an inactive webhook if it would be the tenant's only one. If you're creating multiple webhooks from scratch and want some inactive, add `depends_on = [emporix_webhook.<some_active_one>]` to the inactive ones so an active webhook is guaranteed to exist first.
 2. **Update**: If you try to deactivate the last active webhook, the update is blocked and the state is preserved.
 
 ### JSON Patch Updates
@@ -227,13 +228,9 @@ The nested `subscribed` attribute exposes this status directly and lets you cont
 - Set `subscribed = false` on an event to unsubscribe it while keeping its `destination_url`, `headers`, and `secret_key` overrides configured in Terraform. This is different from removing the event from `events_configuration` entirely, which discards that configuration.
 - The attribute is also `Computed`, so it reflects the real subscription status read back from the API (e.g., if it was changed outside of Terraform), and will show up as drift on the next `plan`/`apply` if it doesn't match your configuration.
 
-### Event Configuration Merging
-
-Entries are matched to API responses by their server-assigned `id` where known, falling back to position for brand-new entries with no `id` yet. Order is preserved; sensitive values not echoed back by the API are preserved from the plan.
-
 ### Multi-Target Updates
 
-Changes are sent as per-entry PATCH operations addressed by `id` (`eventsConfigurationEntry`/`eventsConfigurationEntry/{id}`), not a whole-list replace - this is what lets multiple entries share the same `event_type` without one update clobbering another.
+Changes are sent as per-entry PATCH operations addressed by `id` (`eventsConfigurationEntry`/`eventsConfigurationEntry/{id}`), not a whole-list replace - this is what lets multiple entries share the same `event_type` without one update clobbering another, and (combined with the matching above) means a pure reorder costs zero API calls.
 
 ## API Reference
 

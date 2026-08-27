@@ -979,12 +979,13 @@ func (c *EmporixClient) ListWebhooks(ctx context.Context) ([]WebhookConfigGet, e
 		return nil, err
 	}
 
-	var response WebhookListResponse
-	if err := json.Unmarshal(bodyBytes, &response); err != nil {
+	// The API returns a bare JSON array, not an object wrapping a "configs" field.
+	var configs []WebhookConfigGet
+	if err := json.Unmarshal(bodyBytes, &configs); err != nil {
 		return nil, fmt.Errorf("error decoding webhook list response: %w", err)
 	}
 
-	return response.Configs, nil
+	return configs, nil
 }
 
 // CreateWebhook creates a new webhook configuration.
@@ -1008,14 +1009,18 @@ func (c *EmporixClient) CreateWebhook(ctx context.Context, config *webhookCreate
 	}
 
 	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusCreated); err != nil {
-		// Provide a more helpful error message for 409 Conflict (resource already exists)
+		// A 409 here has two distinct possible causes and the API's response body doesn't
+		// say which: either code %q itself already exists (import or delete it), or a
+		// different webhook with provider %q already exists on this tenant - only one
+		// config per provider_type is allowed, regardless of its active status.
 		if resp.StatusCode == http.StatusConflict {
-			return nil, fmt.Errorf("webhook configuration with code %q already exists. "+
-				"If this resource was previously managed by Terraform, import it with: "+
-				"`terraform import emporix_webhook.<resource_name> %s`. "+
-				"Otherwise, delete the existing webhook from the Emporix UI or API and try again. "+
-				"Error details: %s",
-				config.Code, config.Code, err)
+			return nil, fmt.Errorf("conflict creating webhook %q (provider %q): either this code already exists "+
+				"(import with `terraform import emporix_webhook.<resource_name> %s`, or delete it), or a different "+
+				"webhook with provider %q already exists on this tenant (only one config per provider_type is "+
+				"allowed, active or not). If this happened while running the acceptance tests, they need a tenant "+
+				"with no pre-existing webhooks of their own - a shared/dev tenant with real webhooks configured on "+
+				"it will conflict with them. Error details: %s",
+				config.Code, config.Provider, config.Code, config.Provider, err)
 		}
 		return nil, err
 	}
@@ -2136,12 +2141,11 @@ func (c *EmporixClient) GetPriceModel(ctx context.Context, priceModelId string) 
 	return &priceModel, nil
 }
 
-// defaultReassignmentConflictMsg: the API rejects an update if no other price model is default
-// yet at that instant - a request-ordering issue confirmed by Emporix support, not a bug.
-// Retrying resolves it once the other model's write lands.
+// Confirmed by Emporix support as a request-ordering issue, not a bug: rejected if no
+// other price model is default yet at that instant, resolved by retrying.
 const defaultReassignmentConflictMsg = "exactly one default price model"
 
-// defaultReassignmentRetryDelays are the backoff delays between retries, summing to 5s total.
+// Backoff delays between retries, summing to 5s total.
 var defaultReassignmentRetryDelays = []time.Duration{
 	500 * time.Millisecond,
 	1 * time.Second,
@@ -2192,8 +2196,7 @@ func (c *EmporixClient) UpdatePriceModel(ctx context.Context, priceModelId strin
 	return pm, err
 }
 
-// DeletePriceModel deletes a price model by ID. When forceDelete is true, the price model
-// and all prices assigned to it are deleted asynchronously (requires an admin scope).
+// forceDelete also removes assigned prices asynchronously (requires an admin scope).
 func (c *EmporixClient) DeletePriceModel(ctx context.Context, priceModelId string, forceDelete bool) error {
 	path := fmt.Sprintf("/price/%s/priceModels/%s", strings.ToLower(c.Tenant), priceModelId)
 	if forceDelete {

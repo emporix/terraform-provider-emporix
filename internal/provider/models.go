@@ -366,11 +366,6 @@ type WebhookConfigPartialUpdates struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
-// WebhookListResponse represents the response for listing webhooks
-type WebhookListResponse struct {
-	Configs []WebhookConfigGet `json:"configs"`
-}
-
 // webhookCreateRequest is the creation payload for webhook configurations.
 type webhookCreateRequest struct {
 	Code          string              `json:"code"`

@@ -244,9 +244,7 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 	userProviderValue := plan.Provider.ValueString()
 	apiProviderValue := normalizeProvider(plan.Provider.ValueString())
 
-	// Lock per-tenant mutex to prevent race conditions when creating webhooks.
-	// This ensures that when creating multiple webhooks, the operations are serialized
-	// so the API never sees a state with zero active webhooks.
+	// Serializes webhook creates per tenant so the API never sees zero active webhooks.
 	mu := getWebhookMutex(r.client.Tenant)
 	mu.Lock()
 	defer mu.Unlock()
@@ -259,8 +257,20 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 		Configuration: nestedConfig,
 	}
 
+	// active is a known value at plan time (explicit or via the schema Default), so the
+	// provider must not silently send something else - Terraform would reject the applied
+	// result as inconsistent with the plan. If this create would leave the tenant with zero
+	// active webhooks, the API rejects it; that's surfaced as-is rather than worked around.
 	webhook, err := r.client.CreateWebhook(ctx, createReq)
 	if err != nil {
+		if !createReq.Active && strings.Contains(err.Error(), "active config has to be present") {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf(
+				"Unable to create webhook configuration: the API requires at least one active webhook on the "+
+					"tenant, and this would be the first/only one. Set active = true on this resource, or add "+
+					"depends_on = [emporix_webhook.<some_active_one>] so an active webhook is guaranteed to exist "+
+					"first. Got error: %s", err))
+			return
+		}
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create webhook configuration, got error: %s", err))
 		return
 	}
@@ -495,6 +505,32 @@ func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.Valid
 					"API key from your Svix account: Emporix authenticates against Svix's API with it, so a "+
 					"placeholder string will fail later with a 500 \"Client 'svix': Unauthorized\" rather than a "+
 					"clean validation error.",
+			)
+		}
+
+		var eventsConfiguration types.List
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("events_configuration"), &eventsConfiguration)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !eventsConfiguration.IsNull() && !eventsConfiguration.IsUnknown() && len(eventsConfiguration.Elements()) > 0 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("events_configuration"),
+				"events_configuration not used for this provider",
+				fmt.Sprintf("provider_type %q has no eventsConfiguration field - it's HTTP-only. Remove events_configuration.", providerType.ValueString()),
+			)
+		}
+
+		var headers types.Map
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("headers"), &headers)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if !headers.IsNull() && !headers.IsUnknown() && len(headers.Elements()) > 0 {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("headers"),
+				"headers not used for this provider",
+				fmt.Sprintf("provider_type %q has no headers field - it's HTTP-only. Remove headers.", providerType.ValueString()),
 			)
 		}
 		return
@@ -742,8 +778,19 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 		})
 	}
 
-	// Svix doesn't use destinationUrl (see buildNestedConfigFromModel).
-	if provider != "SVIX" && provider != "SVIX_SHARED" && !plan.DestinationUrl.Equal(state.DestinationUrl) {
+	// SVIX/SVIX_SHARED have no destinationUrl/headers/eventsConfiguration; SVIX_SHARED has no apiKey either.
+	if provider == "SVIX" || provider == "SVIX_SHARED" {
+		if provider == "SVIX" && !plan.SecretKeyString.Equal(state.SecretKeyString) {
+			patches = append(patches, WebhookConfigPartialUpdates{
+				Op:    "UPSERT",
+				Path:  configPrefix + "/apiKey",
+				Value: plan.SecretKeyString.ValueString(),
+			})
+		}
+		return patches
+	}
+
+	if !plan.DestinationUrl.Equal(state.DestinationUrl) {
 		patches = append(patches, WebhookConfigPartialUpdates{
 			Op:    "UPSERT",
 			Path:  configPrefix + "/destinationUrl",
@@ -751,15 +798,10 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 		})
 	}
 
-	// SVIX_SHARED's config schema is empty (no apiKey field, unlike SVIX) - nothing to patch.
-	if provider != "SVIX_SHARED" && !plan.SecretKeyString.Equal(state.SecretKeyString) {
-		secretKeyPath := configPrefix + "/secretKey"
-		if provider == "SVIX" {
-			secretKeyPath = configPrefix + "/apiKey"
-		}
+	if !plan.SecretKeyString.Equal(state.SecretKeyString) {
 		patches = append(patches, WebhookConfigPartialUpdates{
 			Op:    "UPSERT",
-			Path:  secretKeyPath,
+			Path:  configPrefix + "/secretKey",
 			Value: plan.SecretKeyString.ValueString(),
 		})
 	}
@@ -786,39 +828,68 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 	return patches
 }
 
-// Diffs plan vs state by position and emits per-entry PATCH ops (id's UseStateForUnknown
-// means plan[i].Id already equals state[i].Id wherever both exist).
+// A plan entry's Id can't be trusted for correlation (UseStateForUnknown carries it
+// forward by list position, not by conceptual identity), so match on this instead.
+func eventMatchKey(m EventConfigModel) string {
+	return m.EventType.ValueString() + "\x00" + m.Name.ValueString()
+}
+
+// Buckets indexes by eventMatchKey; same-key duplicates match in first-seen order.
+func groupEventIndexesByKey(events []EventConfigModel) map[string][]int {
+	groups := make(map[string][]int, len(events))
+	for i, e := range events {
+		key := eventMatchKey(e)
+		groups[key] = append(groups[key], i)
+	}
+	return groups
+}
+
+// Correlates plan to state by eventMatchKey, then emits per-entry PATCH ops - survives
+// inserting/removing/reordering entries without misattributing content onto the wrong id.
 func buildEventsConfigurationEntryPatches(entryPath string, plan, state []EventConfigModel) []WebhookConfigPartialUpdates {
 	var patches []WebhookConfigPartialUpdates
 
-	n := len(plan)
-	if len(state) > n {
-		n = len(state)
+	stateGroups := groupEventIndexesByKey(state)
+	matchedState := make(map[int]bool, len(state))
+	planMatch := make([]int, len(plan))
+
+	for i, p := range plan {
+		key := eventMatchKey(p)
+		idx := -1
+		if queue := stateGroups[key]; len(queue) > 0 {
+			idx = queue[0]
+			stateGroups[key] = queue[1:]
+			matchedState[idx] = true
+		}
+		planMatch[i] = idx
 	}
 
-	for i := 0; i < n; i++ {
-		switch {
-		case i >= len(state):
-			// New: no id yet, server assigns one.
+	for i, p := range plan {
+		idx := planMatch[i]
+		if idx == -1 {
+			// No matching state entry: a genuinely new entry, not a renamed/moved one.
 			patches = append(patches, WebhookConfigPartialUpdates{
 				Op:    "UPSERT",
 				Path:  entryPath,
-				Value: buildOneEventConfigFromModel(plan[i]),
+				Value: buildOneEventConfigFromModel(p),
 			})
-		case i >= len(plan):
-			// Removed trailing entry.
+			continue
+		}
+		if !eventEntryContentEqual(p, state[idx]) {
+			patches = append(patches, WebhookConfigPartialUpdates{
+				Op:    "UPSERT",
+				Path:  entryPath + "/" + state[idx].Id.ValueString(),
+				Value: buildOneEventConfigFromModel(p),
+			})
+		}
+	}
+
+	for i, s := range state {
+		if !matchedState[i] {
 			patches = append(patches, WebhookConfigPartialUpdates{
 				Op:   "REMOVE",
-				Path: entryPath + "/" + state[i].Id.ValueString(),
+				Path: entryPath + "/" + s.Id.ValueString(),
 			})
-		default:
-			if !eventEntryContentEqual(plan[i], state[i]) {
-				patches = append(patches, WebhookConfigPartialUpdates{
-					Op:    "UPSERT",
-					Path:  entryPath + "/" + plan[i].Id.ValueString(),
-					Value: buildOneEventConfigFromModel(plan[i]),
-				})
-			}
 		}
 	}
 
@@ -837,7 +908,7 @@ func preserveTopLevelFields(result, state *WebhookResourceModel) {
 	if result.SecretKeyString.IsNull() && !state.SecretKeyString.IsNull() {
 		result.SecretKeyString = state.SecretKeyString
 	}
-	if len(result.Headers) == 0 && len(state.Headers) > 0 {
+	if result.Headers == nil && state.Headers != nil {
 		result.Headers = state.Headers
 	}
 }
@@ -849,7 +920,7 @@ func mergeSensitiveValuesIntoResult(result, plan *WebhookResourceModel) {
 	if result.SecretKeyString.IsNull() && !plan.SecretKeyString.IsNull() {
 		result.SecretKeyString = plan.SecretKeyString
 	}
-	if len(result.Headers) == 0 && len(plan.Headers) > 0 {
+	if result.Headers == nil && plan.Headers != nil {
 		result.Headers = plan.Headers
 	}
 }
@@ -865,32 +936,25 @@ func mergeEventsFromPlan(result *WebhookResourceModel, plan *WebhookResourceMode
 }
 
 // Backfills fields the API omitted (e.g. secrets) from source into result, correlating
-// by id where known and falling back to position for entries without one yet.
+// by eventMatchKey (see buildEventsConfigurationEntryPatches for why not position/id).
 func mergeEventsFromSource(result *[]EventConfigModel, source []EventConfigModel) {
-	resultIndexById := make(map[string]int, len(*result))
-	for i, e := range *result {
-		if id := e.Id.ValueString(); id != "" {
-			resultIndexById[id] = i
-		}
-	}
+	resultGroups := groupEventIndexesByKey(*result)
 
-	for i, srcEvent := range source {
-		idx, ok := 0, false
-		if id := srcEvent.Id.ValueString(); !srcEvent.Id.IsNull() && !srcEvent.Id.IsUnknown() && id != "" {
-			idx, ok = resultIndexById[id]
+	for _, srcEvent := range source {
+		queue := resultGroups[eventMatchKey(srcEvent)]
+		if len(queue) == 0 {
+			continue
 		}
-		if !ok {
-			if i >= len(*result) {
-				continue
-			}
-			idx = i
-		}
+		idx := queue[0]
+		resultGroups[eventMatchKey(srcEvent)] = queue[1:]
 
 		resEvent := &(*result)[idx]
 		if resEvent.SecretKey.IsNull() && !srcEvent.SecretKey.IsNull() {
 			resEvent.SecretKey = srcEvent.SecretKey
 		}
-		if len(resEvent.Headers) == 0 && len(srcEvent.Headers) > 0 {
+		// headers is Optional (not Computed): an explicit {} in config must survive, not
+		// just a non-empty map, or a nil map turns into an inconsistent-result error.
+		if resEvent.Headers == nil && srcEvent.Headers != nil {
 			resEvent.Headers = srcEvent.Headers
 		}
 		if resEvent.DestinationUrl.IsNull() && !srcEvent.DestinationUrl.IsNull() {
@@ -908,30 +972,19 @@ func reorderEventsToMatch(result *[]EventConfigModel, reference []EventConfigMod
 		return
 	}
 
-	resultIndexById := make(map[string]int, len(*result))
-	for i, e := range *result {
-		if id := e.Id.ValueString(); id != "" {
-			resultIndexById[id] = i
-		}
-	}
-
+	resultGroups := groupEventIndexesByKey(*result)
 	usedResultIndex := make(map[int]struct{}, len(*result))
 	reordered := make([]EventConfigModel, 0, len(*result))
 
-	for i, refEvent := range reference {
-		idx, ok := 0, false
-		if id := refEvent.Id.ValueString(); !refEvent.Id.IsNull() && !refEvent.Id.IsUnknown() && id != "" {
-			idx, ok = resultIndexById[id]
-		}
-		if !ok && i < len(*result) {
-			idx, ok = i, true
-		}
-		if !ok {
+	for _, refEvent := range reference {
+		key := eventMatchKey(refEvent)
+		queue := resultGroups[key]
+		if len(queue) == 0 {
 			continue
 		}
-		if _, already := usedResultIndex[idx]; already {
-			continue
-		}
+		idx := queue[0]
+		resultGroups[key] = queue[1:]
+
 		reordered = append(reordered, (*result)[idx])
 		usedResultIndex[idx] = struct{}{}
 	}
