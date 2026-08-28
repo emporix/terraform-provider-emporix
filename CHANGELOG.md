@@ -7,10 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.11.1] - 2026-08-28
 
-### Fixes
+### Improvements
 
-- **emporix_price_models**
-  - fixed flaky acceptance tests that could fail on rerun due to leftover price models from an interrupted prior run colliding on a fixed id, or getting stuck undeletable as the tenant's default price model
+- **Documentation: emporix_price_models**
+  - documented that the tenant's current default price model can never be deleted, even with `force_delete` - a different price model must be assigned as the default first
 
 [0.11.1]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.11.1
 
