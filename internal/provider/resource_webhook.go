@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -191,6 +193,11 @@ func (r *WebhookResource) Schema(ctx context.Context, req resource.SchemaRequest
 							MarkdownDescription: "Optional per-entry field exclusion list; only non-blank top-level field names are allowed. Omit or leave null to inherit the event-subscription excludedFields. An empty list overrides the subscription exclusions with no exclusions for this target.",
 							Optional:            true,
 							ElementType:         types.StringType,
+							Validators: []validator.List{
+								listvalidator.ValueStringsAre(
+									stringvalidator.RegexMatches(regexp.MustCompile(`\S`), "must not be blank"),
+								),
+							},
 						},
 						"active": schema.BoolAttribute{
 							MarkdownDescription: "Per-endpoint activation switch. When false, events for this endpoint are dropped without filter evaluation, delivery, or retries; other endpoints are not affected. Distinct from `subscribed` below, which controls the tenant-wide event subscription. Defaults to true.",
