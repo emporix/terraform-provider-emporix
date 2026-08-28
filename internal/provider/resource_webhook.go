@@ -719,6 +719,9 @@ func excludedFieldsFromModel(fields []types.String) *[]string {
 	}
 	values := make([]string, 0, len(fields))
 	for _, f := range fields {
+		if f.IsNull() || f.IsUnknown() {
+			continue
+		}
 		values = append(values, f.ValueString())
 	}
 	return &values
@@ -939,20 +942,29 @@ func buildEventsConfigurationEntryPatches(entryPath string, plan, state []EventC
 			})
 			continue
 		}
+		id := state[idx].Id.ValueString()
+		if id == "" {
+			// No id to address (e.g. state not yet refreshed after an upgrade) - skip
+			// rather than emit a malformed path; the next Read repopulates the real id.
+			continue
+		}
 		if !eventEntryContentEqual(p, state[idx]) {
 			patches = append(patches, WebhookConfigPartialUpdates{
 				Op:    "UPSERT",
-				Path:  entryPath + "/" + state[idx].Id.ValueString(),
+				Path:  entryPath + "/" + id,
 				Value: buildOneEventConfigFromModel(p),
 			})
 		}
 	}
 
 	for i, s := range state {
-		if !matchedState[i] {
+		if matchedState[i] {
+			continue
+		}
+		if id := s.Id.ValueString(); id != "" {
 			patches = append(patches, WebhookConfigPartialUpdates{
 				Op:   "REMOVE",
-				Path: entryPath + "/" + s.Id.ValueString(),
+				Path: entryPath + "/" + id,
 			})
 		}
 	}
