@@ -2136,6 +2136,38 @@ func (c *EmporixClient) GetPriceModel(ctx context.Context, priceModelId string) 
 	return &priceModel, nil
 }
 
+// ListPriceModels retrieves the tenant's price models.
+func (c *EmporixClient) ListPriceModels(ctx context.Context) ([]PriceModel, error) {
+	path := fmt.Sprintf("/price/%s/priceModels?pageSize=200", strings.ToLower(c.Tenant))
+
+	// Always use Accept-Language: * to retrieve all translations
+	headers := map[string]string{
+		"Accept-Language": "*",
+	}
+
+	resp, err := c.doRequest(ctx, "GET", path, nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, fmt.Errorf("error reading response body: %w", readErr)
+	}
+
+	if err := c.checkResponse(ctx, resp.StatusCode, bodyBytes, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	var priceModels []PriceModel
+	if err := json.Unmarshal(bodyBytes, &priceModels); err != nil {
+		return nil, fmt.Errorf("error decoding price models list: %w", err)
+	}
+
+	return priceModels, nil
+}
+
 // defaultReassignmentConflictMsg: the API rejects an update if no other price model is default
 // yet at that instant - a request-ordering issue confirmed by Emporix support, not a bug.
 // Retrying resolves it once the other model's write lands.

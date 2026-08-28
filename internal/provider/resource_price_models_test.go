@@ -13,12 +13,13 @@ import (
 )
 
 // uniqueTestID appends a nanosecond timestamp so a leftover from an interrupted prior run
-// (whose CheckDestroy never got to clean it up) can't collide with the current run.
+// (whose CheckDestroy never got to clean it up) is very unlikely to collide with the current run.
 func uniqueTestID(base string) string {
 	return fmt.Sprintf("%s-%d", base, time.Now().UnixNano())
 }
 
 func TestAccPriceModelsResource_basic(t *testing.T) {
+	id := uniqueTestID("tf-acc-basic")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -26,9 +27,9 @@ func TestAccPriceModelsResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccPriceModelsResourceConfig_basic("tf-acc-basic"),
+				Config: testAccPriceModelsResourceConfig_basic(id),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("emporix_price_models.test", "id", "tf-acc-basic"),
+					resource.TestCheckResourceAttr("emporix_price_models.test", "id", id),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "includes_tax", "true"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "default", "false"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "name.en", "Standard Pricing"),
@@ -43,7 +44,7 @@ func TestAccPriceModelsResource_basic(t *testing.T) {
 			{
 				ResourceName:                         "emporix_price_models.test",
 				ImportState:                          true,
-				ImportStateId:                        "tf-acc-basic",
+				ImportStateId:                        id,
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "id",
 			},
@@ -68,7 +69,66 @@ func TestAccPriceModelsResource_optionalFields(t *testing.T) {
 	})
 }
 
+// TestAccPriceModelsResource_default exercises the default attribute end-to-end. A single-resource
+// test can't cover this safely on its own: the API never allows deleting the tenant's current
+// default price model, and CheckDestroy destroys every resource the test creates, so this test
+// borrows the tenant's pre-existing default, temporarily takes it over, and explicitly hands it
+// back before the resource under test gets torn down.
+func TestAccPriceModelsResource_default(t *testing.T) {
+	ctx := context.Background()
+	client, err := getTestClient()
+	if err != nil {
+		t.Fatalf("failed to get test client: %v", err)
+	}
+
+	originalDefaultID, err := findDefaultPriceModelID(ctx, client)
+	if err != nil {
+		t.Fatalf("failed to look up the tenant's current default price model: %v", err)
+	}
+	if originalDefaultID == "" {
+		t.Skip("tenant has no default price model to restore afterward; skipping to avoid leaving the tenant without one")
+	}
+
+	// Safety net in case a step fails outright and the explicit restore below never runs.
+	t.Cleanup(func() {
+		if _, err := restoreDefaultPriceModel(ctx, client, originalDefaultID); err != nil {
+			t.Logf("failed to restore original default price model %s: %v", originalDefaultID, err)
+		}
+	})
+
+	id := uniqueTestID("tf-acc-default")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckPriceModelsDestroy,
+		Steps: []resource.TestStep{
+			// Create as the tenant's default - takes over from whatever was default before.
+			{
+				Config: testAccPriceModelsResourceConfig_defaultFlag(id, true),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_price_models.test", "default", "true"),
+				),
+			},
+			// Hand default back to the original price model first - the API never allows
+			// deleting the current default, even with force_delete.
+			{
+				PreConfig: func() {
+					if _, err := restoreDefaultPriceModel(ctx, client, originalDefaultID); err != nil {
+						t.Fatalf("failed to restore original default price model %s: %v", originalDefaultID, err)
+					}
+				},
+				Config: testAccPriceModelsResourceConfig_defaultFlag(id, false),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_price_models.test", "default", "false"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccPriceModelsResource_update(t *testing.T) {
+	id := uniqueTestID("tf-acc-update")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -76,7 +136,7 @@ func TestAccPriceModelsResource_update(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create
 			{
-				Config: testAccPriceModelsResourceConfig_basic("tf-acc-update"),
+				Config: testAccPriceModelsResourceConfig_basic(id),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "includes_tax", "true"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "name.en", "Standard Pricing"),
@@ -84,7 +144,7 @@ func TestAccPriceModelsResource_update(t *testing.T) {
 			},
 			// Update name/description/includes_tax
 			{
-				Config: testAccPriceModelsResourceConfig_updated("tf-acc-update"),
+				Config: testAccPriceModelsResourceConfig_updated(id),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "includes_tax", "false"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "name.en", "Standard Pricing Updated"),
@@ -103,7 +163,7 @@ func TestAccPriceModelsResource_volumeTiers(t *testing.T) {
 		CheckDestroy:             testAccCheckPriceModelsDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPriceModelsResourceConfig_volume("tf-acc-volume"),
+				Config: testAccPriceModelsResourceConfig_volume(uniqueTestID("tf-acc-volume")),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tier_type", "VOLUME"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.#", "3"),
@@ -119,13 +179,14 @@ func TestAccPriceModelsResource_volumeTiers(t *testing.T) {
 }
 
 func TestAccPriceModelsResource_tiered(t *testing.T) {
+	id := uniqueTestID("tf-acc-tiered")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckPriceModelsDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPriceModelsResourceConfig_tieredStrategy("tf-acc-tiered"),
+				Config: testAccPriceModelsResourceConfig_tieredStrategy(id),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tier_type", "TIERED"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.#", "2"),
@@ -139,7 +200,7 @@ func TestAccPriceModelsResource_tiered(t *testing.T) {
 			{
 				ResourceName:                         "emporix_price_models.test",
 				ImportState:                          true,
-				ImportStateId:                        "tf-acc-tiered",
+				ImportStateId:                        id,
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "id",
 			},
@@ -148,6 +209,7 @@ func TestAccPriceModelsResource_tiered(t *testing.T) {
 }
 
 func TestAccPriceModelsResource_updateTiersAppend(t *testing.T) {
+	id := uniqueTestID("tf-acc-tiers-append")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -155,14 +217,14 @@ func TestAccPriceModelsResource_updateTiersAppend(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with 3 tiers: 0, 10, 50
 			{
-				Config: testAccPriceModelsResourceConfig_tiers("tf-acc-tiers-append", []int{0, 10, 50}),
+				Config: testAccPriceModelsResourceConfig_tiers(id, []int{0, 10, 50}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.#", "3"),
 				),
 			},
 			// Append a new, strictly-larger tier at the end
 			{
-				Config: testAccPriceModelsResourceConfig_tiers("tf-acc-tiers-append", []int{0, 10, 50, 100}),
+				Config: testAccPriceModelsResourceConfig_tiers(id, []int{0, 10, 50, 100}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.#", "4"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.0.min_quantity.quantity", "0"),
@@ -177,6 +239,7 @@ func TestAccPriceModelsResource_updateTiersAppend(t *testing.T) {
 }
 
 func TestAccPriceModelsResource_updateTiers_insertMiddle(t *testing.T) {
+	id := uniqueTestID("tf-acc-tiers")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -184,7 +247,7 @@ func TestAccPriceModelsResource_updateTiers_insertMiddle(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with 3 tiers: 0, 10, 50
 			{
-				Config: testAccPriceModelsResourceConfig_tiers("tf-acc-tiers", []int{0, 10, 50}),
+				Config: testAccPriceModelsResourceConfig_tiers(id, []int{0, 10, 50}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.#", "3"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.0.min_quantity.quantity", "0"),
@@ -197,7 +260,7 @@ func TestAccPriceModelsResource_updateTiers_insertMiddle(t *testing.T) {
 			},
 			// Insert a tier in the middle (5, between 0 and 10)
 			{
-				Config: testAccPriceModelsResourceConfig_tiers("tf-acc-tiers", []int{0, 5, 10, 50}),
+				Config: testAccPriceModelsResourceConfig_tiers(id, []int{0, 5, 10, 50}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.#", "4"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.0.min_quantity.quantity", "0"),
@@ -212,7 +275,7 @@ func TestAccPriceModelsResource_updateTiers_insertMiddle(t *testing.T) {
 			},
 			// Remove the inserted tier again - shifts indices back down.
 			{
-				Config: testAccPriceModelsResourceConfig_tiers("tf-acc-tiers", []int{0, 10, 50}),
+				Config: testAccPriceModelsResourceConfig_tiers(id, []int{0, 10, 50}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.#", "3"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.0.min_quantity.quantity", "0"),
@@ -231,7 +294,7 @@ func TestAccPriceModelsResource_forceDelete(t *testing.T) {
 		CheckDestroy:             testAccCheckPriceModelsDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPriceModelsResourceConfig_forceDelete("tf-acc-force-delete"),
+				Config: testAccPriceModelsResourceConfig_forceDelete(uniqueTestID("tf-acc-force-delete")),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "force_delete", "true"),
 				),
@@ -241,22 +304,24 @@ func TestAccPriceModelsResource_forceDelete(t *testing.T) {
 }
 
 func TestAccPriceModelsResource_requiresReplace(t *testing.T) {
+	idA := uniqueTestID("tf-acc-replace-a")
+	idB := uniqueTestID("tf-acc-replace-b")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckPriceModelsDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPriceModelsResourceConfig_basic("tf-acc-replace-a"),
+				Config: testAccPriceModelsResourceConfig_basic(idA),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("emporix_price_models.test", "id", "tf-acc-replace-a"),
+					resource.TestCheckResourceAttr("emporix_price_models.test", "id", idA),
 				),
 			},
 			// Changing id must force replacement (RequiresReplace plan modifier)
 			{
-				Config: testAccPriceModelsResourceConfig_basic("tf-acc-replace-b"),
+				Config: testAccPriceModelsResourceConfig_basic(idB),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("emporix_price_models.test", "id", "tf-acc-replace-b"),
+					resource.TestCheckResourceAttr("emporix_price_models.test", "id", idB),
 				),
 			},
 		},
@@ -281,19 +346,20 @@ func TestAccPriceModelsResource_generatedId(t *testing.T) {
 }
 
 func TestAccPriceModelsResource_changeTierType(t *testing.T) {
+	id := uniqueTestID("tf-acc-change-strategy")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckPriceModelsDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPriceModelsResourceConfig_basic("tf-acc-change-strategy"),
+				Config: testAccPriceModelsResourceConfig_basic(id),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tier_type", "BASIC"),
 				),
 			},
 			{
-				Config: testAccPriceModelsResourceConfig_tiers("tf-acc-change-strategy", []int{0, 10, 50}),
+				Config: testAccPriceModelsResourceConfig_tiers(id, []int{0, 10, 50}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tier_type", "VOLUME"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "tier_definition.tiers.#", "3"),
@@ -304,20 +370,21 @@ func TestAccPriceModelsResource_changeTierType(t *testing.T) {
 }
 
 func TestAccPriceModelsResource_updateMeasurementUnit(t *testing.T) {
+	id := uniqueTestID("tf-acc-mu-update")
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckPriceModelsDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccPriceModelsResourceConfig_basic("tf-acc-mu-update"),
+				Config: testAccPriceModelsResourceConfig_basic(id),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "measurement_unit.quantity", "1"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "measurement_unit.unit_code", "pc"),
 				),
 			},
 			{
-				Config: testAccPriceModelsResourceConfig_measurementUnit("tf-acc-mu-update", 5, "pc"),
+				Config: testAccPriceModelsResourceConfig_measurementUnit(id, 5, "pc"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_price_models.test", "measurement_unit.quantity", "5"),
 					resource.TestCheckResourceAttr("emporix_price_models.test", "measurement_unit.unit_code", "pc"),
@@ -445,6 +512,37 @@ resource "emporix_price_models" "test" {
   }
 }
 `, id)
+}
+
+func testAccPriceModelsResourceConfig_defaultFlag(id string, isDefault bool) string {
+	return fmt.Sprintf(`
+resource "emporix_price_models" "test" {
+  id           = %[1]q
+  includes_tax = true
+  default      = %[2]t
+
+  name = {
+    en = "Default Flag Test"
+  }
+
+  tier_definition = {
+    tier_type = "BASIC"
+    tiers = [
+      {
+        min_quantity = {
+          quantity  = 0
+          unit_code = "pc"
+        }
+      }
+    ]
+  }
+
+  measurement_unit = {
+    quantity  = 1
+    unit_code = "pc"
+  }
+}
+`, id, isDefault)
 }
 
 func testAccPriceModelsResourceConfig_noId() string {
@@ -925,4 +1023,45 @@ func testAccCheckPriceModelsDestroy(s *terraform.State) error {
 	}
 
 	return nil
+}
+
+// findDefaultPriceModelID returns the id of the tenant's current default price model, or "" if
+// none is set.
+func findDefaultPriceModelID(ctx context.Context, client *EmporixClient) (string, error) {
+	priceModels, err := client.ListPriceModels(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	for _, pm := range priceModels {
+		if pm.Default != nil && *pm.Default {
+			return pm.ID, nil
+		}
+	}
+
+	return "", nil
+}
+
+// restoreDefaultPriceModel re-fetches price model id and resubmits it with default=true, relying
+// on UpdatePriceModel's built-in retry to absorb the API's transient "exactly one default price
+// model" ordering conflict.
+func restoreDefaultPriceModel(ctx context.Context, client *EmporixClient, id string) (*PriceModel, error) {
+	current, err := client.GetPriceModel(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	isDefault := true
+	upsert := &PriceModelUpsert{
+		ID:              current.ID,
+		IncludesTax:     current.IncludesTax,
+		IncludesMarkup:  current.IncludesMarkup,
+		Default:         &isDefault,
+		Name:            current.Name,
+		Description:     current.Description,
+		TierDefinition:  current.TierDefinition,
+		MeasurementUnit: current.MeasurementUnit,
+	}
+
+	return client.UpdatePriceModel(ctx, id, upsert)
 }
