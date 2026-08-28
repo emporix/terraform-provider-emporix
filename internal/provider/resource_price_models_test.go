@@ -75,6 +75,8 @@ func TestAccPriceModelsResource_optionalFields(t *testing.T) {
 // borrows the tenant's pre-existing default, temporarily takes it over, and explicitly hands it
 // back before the resource under test gets torn down.
 func TestAccPriceModelsResource_default(t *testing.T) {
+	testAccPreCheck(t)
+
 	ctx := context.Background()
 	client, err := getTestClient()
 	if err != nil {
