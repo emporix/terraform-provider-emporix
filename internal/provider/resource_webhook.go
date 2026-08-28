@@ -654,19 +654,19 @@ func buildOneEventConfigFromModel(m EventConfigModel) EventConfig {
 	event := EventConfig{
 		EventType: m.EventType.ValueString(),
 	}
-	if !m.DestinationUrl.IsNull() {
+	if !m.DestinationUrl.IsNull() && !m.DestinationUrl.IsUnknown() {
 		event.DestinationUrl = m.DestinationUrl.ValueString()
 	}
-	if !m.SecretKey.IsNull() {
+	if !m.SecretKey.IsNull() && !m.SecretKey.IsUnknown() {
 		event.SecretKey = m.SecretKey.ValueString()
 	}
 	if len(m.Headers) > 0 {
 		event.Headers = buildHeaderFieldValueMapFromModel(m.Headers)
 	}
-	if !m.Filter.IsNull() {
+	if !m.Filter.IsNull() && !m.Filter.IsUnknown() {
 		event.Filter = m.Filter.ValueString()
 	}
-	if !m.Name.IsNull() {
+	if !m.Name.IsNull() && !m.Name.IsUnknown() {
 		event.Name = m.Name.ValueString()
 	}
 	if !m.Active.IsNull() && !m.Active.IsUnknown() {

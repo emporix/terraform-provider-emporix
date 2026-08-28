@@ -58,51 +58,6 @@ func TestAccWebhookResource_basic(t *testing.T) {
 	})
 }
 
-// TestAccWebhookResource_svixProvider exercises the SVIX provider. Commented out: it
-// needs a real Svix account API key (EMPORIX_WEBHOOK_SVIX_API_KEY) - a placeholder value
-// fails with a 500 "Client 'svix': Unauthorized" since Emporix authenticates against
-// Svix's API with it. No destination_url: SVIX's config only accepts apiKey.
-//
-// func TestAccWebhookResource_svixProvider(t *testing.T) {
-// 	svixApiKey := os.Getenv("EMPORIX_WEBHOOK_SVIX_API_KEY")
-// 	if svixApiKey == "" {
-// 		t.Skip("EMPORIX_WEBHOOK_SVIX_API_KEY must be set to a real Svix account API key " +
-// 			"to test the SVIX provider - Emporix authenticates against Svix's API with it, " +
-// 			"so no placeholder value can substitute for a real one")
-// 	}
-//
-// 	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-// 	t.Cleanup(func() {
-// 		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-// 	})
-//
-// 	resource.Test(t, resource.TestCase{
-// 		PreCheck:                 func() { testAccPreCheck(t) },
-// 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-// 		CheckDestroy:             testAccCheckWebhookDestroy,
-// 		Steps: []resource.TestStep{
-// 			// Create with SVIX provider
-// 			{
-// 				Config: fmt.Sprintf(`
-// resource "emporix_webhook" "test" {
-//   code          = "test_webhook_svix"
-//   provider_type = "SVIX"
-//   active        = true
-//
-//   secret_key = %q
-// }
-// `, svixApiKey),
-// 				Check: resource.ComposeAggregateTestCheckFunc(
-// 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_svix"),
-// 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "SVIX"),
-// 					resource.TestCheckNoResourceAttr("emporix_webhook.test", "destination_url"),
-// 					resource.TestCheckResourceAttr("emporix_webhook.test", "secret_key_exists", "true"),
-// 				),
-// 			},
-// 		},
-// 	})
-// }
-
 func TestAccWebhookResource_withSecretKey(t *testing.T) {
 	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
 	t.Cleanup(func() {

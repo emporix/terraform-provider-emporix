@@ -3,7 +3,7 @@
 Manages a webhook subscription configuration in Emporix. Supports `SVIX_SHARED` (default Emporix Svix server), `SVIX` (your own Svix server), and `HTTP` (direct HTTP POST).
 
 **Notes:**
-- At least one config must stay active per tenant; the API forces `active = true` rather than allow zero.
+- At least one config must stay active per tenant; the API rejects creating/updating a webhook that would leave zero active.
 - Only one config per `provider_type` is allowed per tenant (`409` otherwise), even if the existing one is `active = false`.
 - `HTTP` only: `destination_url` must respond successfully to `HEAD`/`OPTIONS` (undocumented behavior, found empirically - a placeholder/unreachable URL fails at `apply`).
 - `SVIX`/`SVIX_SHARED` don't use `destination_url` - rejected by the API if set.
