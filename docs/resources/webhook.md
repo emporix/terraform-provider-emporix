@@ -4,8 +4,8 @@ Manages a webhook subscription configuration in Emporix. Supports `SVIX_SHARED` 
 
 **Notes:**
 - At least one config must stay active per tenant; the API rejects creating/updating a webhook that would leave zero active.
-- Only one config per `provider_type` is allowed per tenant (`409` otherwise), even if the existing one is `active = false`.
-- `HTTP` only: `destination_url` must respond successfully to `HEAD`/`OPTIONS` (undocumented behavior, found empirically - a placeholder/unreachable URL fails at `apply`).
+- Only one config per `provider_type` is allowed per tenant, even if the existing one is `active = false`.
+- `HTTP` only: `destination_url` must respond successfully to `HEAD`/`OPTIONS` (a placeholder/unreachable URL fails at `apply`).
 - `SVIX`/`SVIX_SHARED` don't use `destination_url` - rejected by the API if set.
 
 ## Example Usage
@@ -202,6 +202,7 @@ The Emporix API requires at least one active webhook configuration per tenant.
 
 1. **Create**: the API rejects creating an inactive webhook if it would be the tenant's only one. If you're creating multiple webhooks from scratch and want some inactive, add `depends_on = [emporix_webhook.<some_active_one>]` to the inactive ones so an active webhook is guaranteed to exist first.
 2. **Update**: If you try to deactivate the last active webhook, the update is blocked and the state is preserved.
+3. **Delete**: `terraform destroy` always deletes with `force=true`, so an active webhook is removed without needing to deactivate it first.
 
 ### JSON Patch Updates
 
@@ -230,7 +231,9 @@ The nested `subscribed` attribute exposes this status directly and lets you cont
 
 ### Multi-Target Updates
 
-Changes are sent as per-entry PATCH operations addressed by `id` (`eventsConfigurationEntry`/`eventsConfigurationEntry/{id}`), not a whole-list replace - this is what lets multiple entries share the same `event_type` without one update clobbering another, and (combined with the matching above) means a pure reorder costs zero API calls.
+Changes are sent as per-entry PATCH operations addressed by `id` (`eventsConfigurationEntry`/`eventsConfigurationEntry/{id}`), not a whole-list replace - this is what lets multiple entries share the same `event_type` without one update clobbering another.
+
+Each plan entry is matched to its existing `id` by content first (so inserting, removing, or reordering entries never misattributes one entry's data onto another's id), falling back to `event_type` + position only for entries that are genuinely new or edited. A pure reorder costs zero API calls. The one case this can't resolve automatically is editing *and* reordering two or more entries sharing an `event_type` in the same apply - there's no way to tell which new content belongs to which existing entry.
 
 ## API Reference
 

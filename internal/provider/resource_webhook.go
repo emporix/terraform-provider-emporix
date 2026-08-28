@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -23,6 +24,7 @@ import (
 var _ resource.Resource = &WebhookResource{}
 var _ resource.ResourceWithImportState = &WebhookResource{}
 var _ resource.ResourceWithValidateConfig = &WebhookResource{}
+var _ resource.ResourceWithModifyPlan = &WebhookResource{}
 
 func NewWebhookResource() resource.Resource {
 	return &WebhookResource{}
@@ -257,10 +259,8 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 		Configuration: nestedConfig,
 	}
 
-	// active is a known value at plan time (explicit or via the schema Default), so the
-	// provider must not silently send something else - Terraform would reject the applied
-	// result as inconsistent with the plan. If this create would leave the tenant with zero
-	// active webhooks, the API rejects it; that's surfaced as-is rather than worked around.
+	// active is known at plan time, so it must be sent as-is; a create that would leave
+	// zero active webhooks is rejected by the API and surfaced below, not worked around.
 	webhook, err := r.client.CreateWebhook(ctx, createReq)
 	if err != nil {
 		if !createReq.Active && strings.Contains(err.Error(), "active config has to be present") {
@@ -452,6 +452,41 @@ func (r *WebhookResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 func (r *WebhookResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("code"), req, resp)
+}
+
+// Resolves events_configuration[*].id via correlateEventEntries instead of the schema's
+// position-based UseStateForUnknown, which would otherwise lock in a wrong id before
+// Update runs and crash with "provider produced inconsistent result after apply".
+func (r *WebhookResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// No prior state to correlate against, and a replace gets fresh ids regardless.
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() || len(resp.RequiresReplace) > 0 {
+		return
+	}
+
+	var plan, state WebhookResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if len(plan.EventsConfiguration) == 0 {
+		return
+	}
+
+	matched := correlateEventEntries(plan.EventsConfiguration, state.EventsConfiguration)
+	for i, idx := range matched {
+		if idx != -1 {
+			plan.EventsConfiguration[i].Id = state.EventsConfiguration[idx].Id
+		} else {
+			plan.EventsConfiguration[i].Id = types.StringUnknown()
+		}
+	}
+
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 }
 
 func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
@@ -828,44 +863,73 @@ func buildPatchOperations(current *WebhookConfigGet, plan, state WebhookResource
 	return patches
 }
 
-// A plan entry's Id can't be trusted for correlation (UseStateForUnknown carries it
-// forward by list position, not by conceptual identity), so match on this instead.
-func eventMatchKey(m EventConfigModel) string {
-	return m.EventType.ValueString() + "\x00" + m.Name.ValueString()
+// contentSignature is an entry's API payload (see buildOneEventConfigFromModel) as a
+// string, excluding Id and Subscribed - equal signatures mean equal content.
+func contentSignature(m EventConfigModel) string {
+	b, _ := json.Marshal(buildOneEventConfigFromModel(m))
+	return string(b)
 }
 
-// Buckets indexes by eventMatchKey; same-key duplicates match in first-seen order.
-func groupEventIndexesByKey(events []EventConfigModel) map[string][]int {
-	groups := make(map[string][]int, len(events))
-	for i, e := range events {
-		key := eventMatchKey(e)
-		groups[key] = append(groups[key], i)
+// correlateEventEntries maps each plan entry to a state index (-1 if none), matching by
+// exact content first (order-independent, so reorders/inserts don't misattribute
+// content onto the wrong id) and falling back to event_type + first-seen order for
+// whatever's left (i.e. genuinely new or edited entries).
+func correlateEventEntries(plan, state []EventConfigModel) []int {
+	matched := make([]int, len(plan))
+	for i := range matched {
+		matched[i] = -1
 	}
-	return groups
+	usedState := make(map[int]bool, len(state))
+
+	contentGroups := make(map[string][]int, len(state))
+	for i, s := range state {
+		key := contentSignature(s)
+		contentGroups[key] = append(contentGroups[key], i)
+	}
+	for i, p := range plan {
+		key := contentSignature(p)
+		if queue := contentGroups[key]; len(queue) > 0 {
+			matched[i] = queue[0]
+			contentGroups[key] = queue[1:]
+			usedState[queue[0]] = true
+		}
+	}
+
+	typeGroups := make(map[string][]int, len(state))
+	for i, s := range state {
+		if !usedState[i] {
+			typeGroups[s.EventType.ValueString()] = append(typeGroups[s.EventType.ValueString()], i)
+		}
+	}
+	for i, p := range plan {
+		if matched[i] != -1 {
+			continue
+		}
+		key := p.EventType.ValueString()
+		if queue := typeGroups[key]; len(queue) > 0 {
+			matched[i] = queue[0]
+			typeGroups[key] = queue[1:]
+			usedState[queue[0]] = true
+		}
+	}
+
+	return matched
 }
 
-// Correlates plan to state by eventMatchKey, then emits per-entry PATCH ops - survives
-// inserting/removing/reordering entries without misattributing content onto the wrong id.
+// Correlates plan to state via correlateEventEntries, then emits per-entry PATCH ops.
 func buildEventsConfigurationEntryPatches(entryPath string, plan, state []EventConfigModel) []WebhookConfigPartialUpdates {
 	var patches []WebhookConfigPartialUpdates
 
-	stateGroups := groupEventIndexesByKey(state)
+	matched := correlateEventEntries(plan, state)
 	matchedState := make(map[int]bool, len(state))
-	planMatch := make([]int, len(plan))
-
-	for i, p := range plan {
-		key := eventMatchKey(p)
-		idx := -1
-		if queue := stateGroups[key]; len(queue) > 0 {
-			idx = queue[0]
-			stateGroups[key] = queue[1:]
+	for _, idx := range matched {
+		if idx != -1 {
 			matchedState[idx] = true
 		}
-		planMatch[i] = idx
 	}
 
 	for i, p := range plan {
-		idx := planMatch[i]
+		idx := matched[i]
 		if idx == -1 {
 			// No matching state entry: a genuinely new entry, not a renamed/moved one.
 			patches = append(patches, WebhookConfigPartialUpdates{
@@ -935,18 +999,15 @@ func mergeEventsFromPlan(result *WebhookResourceModel, plan *WebhookResourceMode
 	reorderEventsToMatch(&result.EventsConfiguration, plan.EventsConfiguration)
 }
 
-// Backfills fields the API omitted (e.g. secrets) from source into result, correlating
-// by eventMatchKey (see buildEventsConfigurationEntryPatches for why not position/id).
+// Backfills fields the API omitted (e.g. secrets) from source into result.
 func mergeEventsFromSource(result *[]EventConfigModel, source []EventConfigModel) {
-	resultGroups := groupEventIndexesByKey(*result)
+	matched := correlateEventEntries(source, *result)
 
-	for _, srcEvent := range source {
-		queue := resultGroups[eventMatchKey(srcEvent)]
-		if len(queue) == 0 {
+	for i, srcEvent := range source {
+		idx := matched[i]
+		if idx == -1 {
 			continue
 		}
-		idx := queue[0]
-		resultGroups[eventMatchKey(srcEvent)] = queue[1:]
 
 		resEvent := &(*result)[idx]
 		if resEvent.SecretKey.IsNull() && !srcEvent.SecretKey.IsNull() {
@@ -972,19 +1033,17 @@ func reorderEventsToMatch(result *[]EventConfigModel, reference []EventConfigMod
 		return
 	}
 
-	resultGroups := groupEventIndexesByKey(*result)
+	matched := correlateEventEntries(reference, *result)
 	usedResultIndex := make(map[int]struct{}, len(*result))
 	reordered := make([]EventConfigModel, 0, len(*result))
 
-	for _, refEvent := range reference {
-		key := eventMatchKey(refEvent)
-		queue := resultGroups[key]
-		if len(queue) == 0 {
+	for _, idx := range matched {
+		if idx == -1 {
 			continue
 		}
-		idx := queue[0]
-		resultGroups[key] = queue[1:]
-
+		if _, already := usedResultIndex[idx]; already {
+			continue
+		}
 		reordered = append(reordered, (*result)[idx])
 		usedResultIndex[idx] = struct{}{}
 	}

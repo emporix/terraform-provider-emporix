@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/config"
@@ -14,11 +13,6 @@ import (
 )
 
 func TestAccWebhookResource_basic(t *testing.T) {
-	// Enable force deletion for webhook tests
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	url := "https://example.com"
 
@@ -59,10 +53,6 @@ func TestAccWebhookResource_basic(t *testing.T) {
 }
 
 func TestAccWebhookResource_withSecretKey(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	url := "https://example.com"
 
@@ -85,10 +75,6 @@ func TestAccWebhookResource_withSecretKey(t *testing.T) {
 }
 
 func TestAccWebhookResource_withHeaders(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	url := "https://example.com"
 
@@ -113,10 +99,6 @@ func TestAccWebhookResource_withHeaders(t *testing.T) {
 }
 
 func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	url := "https://example.com"
 
@@ -143,11 +125,8 @@ func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
 	})
 }
 
-// Regression test: a variable-sourced events_configuration (whose object type omits the
-// Computed attributes) used to make Terraform widen the value and mark it Unknown,
-// crashing ValidateConfig - only via a variable/module input, not a literal in-line value.
-// PlanOnly since the crash happens pre-API-call; ExpectNonEmptyPlan because this step
-// never applies, so the plan is a genuine "+create".
+// Regression: a variable-sourced events_configuration used to widen to Unknown and
+// crash ValidateConfig. PlanOnly + ExpectNonEmptyPlan since this step never applies.
 func TestAccWebhookResource_eventsConfigurationFromVariable(t *testing.T) {
 	url := "https://example.com"
 
@@ -193,10 +172,6 @@ resource "emporix_webhook" "test" {
 }
 
 func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	code := "test_webhook_events_lifecycle"
 	url := "https://example.com"
@@ -265,10 +240,6 @@ func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
 }
 
 func TestAccWebhookResource_eventDestinationUrlFallback(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	code := "test_webhook_dest_url_fallback"
 	parentUrl := "https://example.com"
@@ -320,10 +291,6 @@ resource "emporix_webhook" "test" {
 }
 
 func TestAccWebhookResource_subscribedToggle(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	code := "test_webhook_subscribed_toggle"
 	url := "https://example.com"
@@ -393,10 +360,6 @@ func TestAccWebhookResource_subscribedToggle(t *testing.T) {
 }
 
 func TestAccWebhookResource_requiresReplace(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	url := "https://example.com"
 
@@ -425,10 +388,6 @@ func TestAccWebhookResource_requiresReplace(t *testing.T) {
 
 // Two entries sharing an event_type must get distinct ids and update independently.
 func TestAccWebhookResource_multiTargetSameEventType(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	code := "test_webhook_multi_target"
 	url := "https://example.com"
@@ -727,39 +686,29 @@ func keys(m map[string]struct{}) []string {
 	return ks
 }
 
-// Must be reachable: the API HEAD/OPTIONS-checks destination_url and rejects placeholders.
-// testAccCheckWebhookDestroy verifies that webhooks have been destroyed
+// testAccCheckWebhookDestroy verifies that webhooks have been destroyed.
 func testAccCheckWebhookDestroy(s *terraform.State) error {
 	ctx := context.Background()
 
-	// Get configured client
 	client, err := getTestClient()
 	if err != nil {
 		return fmt.Errorf("failed to get test client: %w", err)
 	}
 
-	// Iterate through all resources in state
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "emporix_webhook" {
 			continue
 		}
 
 		code := rs.Primary.Attributes["code"]
-
-		// Try to get the webhook configuration
 		_, err := client.GetWebhook(ctx, code)
-
-		// If not found, resource was successfully destroyed
 		if IsNotFound(err) {
 			continue
 		}
-
-		// If other error, fail the test
 		if err != nil {
 			return fmt.Errorf("unexpected error checking webhook: %w", err)
 		}
 
-		// If no error, webhook still exists - try force delete
 		_ = client.DeleteWebhook(ctx, code)
 		return fmt.Errorf("webhook %s still exists after destroy", code)
 	}
@@ -767,9 +716,7 @@ func testAccCheckWebhookDestroy(s *terraform.State) error {
 	return nil
 }
 
-// --- buildEventsConfigurationEntryPatches: eventMatchKey-based correlation ---
-// Guards against matching plan/state by raw position, which misattributes content onto
-// the wrong server-side id when an entry is inserted/removed/reordered mid-list.
+// --- buildEventsConfigurationEntryPatches: correlateEventEntries content-match correlation ---
 
 func eventEntry(eventType, name string) EventConfigModel {
 	return EventConfigModel{EventType: types.StringValue(eventType), Name: types.StringValue(name)}
@@ -847,6 +794,55 @@ func TestBuildEventsConfigurationEntryPatches_PureReorder_NoPatches(t *testing.T
 
 	if len(patches) != 0 {
 		t.Fatalf("got %d patches, want 0 for a pure reorder with unchanged content: %+v", len(patches), patches)
+	}
+}
+
+func TestBuildEventsConfigurationEntryPatches_InsertInMiddleOfSameTypeGroup(t *testing.T) {
+	// Insert a new entry between two unchanged same-event_type entries - only the new
+	// one should patch; the other two must be recognized as unchanged despite the shift.
+	state := []EventConfigModel{
+		eventEntryWithId("1", "product.created", "catalog sync"),
+		eventEntryWithId("2", "product.created", "merch review"),
+	}
+	plan := []EventConfigModel{
+		eventEntry("product.created", "catalog sync"),
+		eventEntry("product.created", "flash sale"), // new, inserted in the middle
+		eventEntry("product.created", "merch review"),
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 1 {
+		t.Fatalf("got %d patches, want exactly 1 (clean create for the inserted entry): %+v", len(patches), patches)
+	}
+	p := patches[0]
+	if p.Op != "UPSERT" || p.Path != "/configuration/http/eventsConfigurationEntry" {
+		t.Fatalf("unexpected patch: %+v", p)
+	}
+	ec := p.Value.(EventConfig)
+	if ec.Name != "flash sale" {
+		t.Fatalf("patch is for the wrong entry: %+v", ec)
+	}
+}
+
+func TestBuildEventsConfigurationEntryPatches_RenameIsInPlaceUpdate(t *testing.T) {
+	// name is purely descriptive per the API docs - changing it alone must PATCH the
+	// existing id, not delete+create, even with no other entries of the same event_type.
+	state := []EventConfigModel{
+		eventEntryWithId("1", "product.created", "old label"),
+	}
+	plan := []EventConfigModel{
+		eventEntry("product.created", "new label"),
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 1 {
+		t.Fatalf("got %d patches, want exactly 1 (in-place rename): %+v", len(patches), patches)
+	}
+	p := patches[0]
+	if p.Op != "UPSERT" || p.Path != "/configuration/http/eventsConfigurationEntry/1" {
+		t.Fatalf("expected an in-place UPSERT on id=1, got: %+v", p)
 	}
 }
 
