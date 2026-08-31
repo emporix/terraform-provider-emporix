@@ -253,7 +253,7 @@ func (r *WebhookResource) Create(ctx context.Context, req resource.CreateRequest
 	userProviderValue := plan.Provider.ValueString()
 	apiProviderValue := normalizeProvider(plan.Provider.ValueString())
 
-	// Serializes webhook creates per tenant so the API never sees zero active webhooks.
+	// Avoids concurrent-write races against the API's version-based optimistic concurrency.
 	mu := getWebhookMutex(r.client.Tenant)
 	mu.Lock()
 	defer mu.Unlock()
@@ -465,8 +465,8 @@ func (r *WebhookResource) ImportState(ctx context.Context, req resource.ImportSt
 // position-based UseStateForUnknown, which would otherwise lock in a wrong id before
 // Update runs and crash with "provider produced inconsistent result after apply".
 func (r *WebhookResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// No prior state to correlate against, and a replace gets fresh ids regardless.
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() || len(resp.RequiresReplace) > 0 {
+	// No prior state to correlate against.
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
 		return
 	}
 
@@ -477,6 +477,12 @@ func (r *WebhookResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	}
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// A replace gets fresh ids regardless; resp.RequiresReplace isn't populated yet
+	// here, so check the RequiresReplace-triggering attributes directly.
+	if !plan.Code.Equal(state.Code) || !plan.Provider.Equal(state.Provider) {
 		return
 	}
 
@@ -600,6 +606,11 @@ func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.Valid
 
 	parentSet := destinationUrl.IsUnknown() || (!destinationUrl.IsNull() && destinationUrl.ValueString() != "")
 
+	// subscribed is a tenant-wide status per event_type, not per entry - the API has no
+	// way to honor two entries sharing an event_type wanting different subscribed values.
+	subscribedByType := make(map[string]bool, len(events))
+	conflictReported := make(map[string]bool, len(events))
+
 	for i, event := range events {
 		eventSet := event.DestinationUrl.IsUnknown() || (!event.DestinationUrl.IsNull() && event.DestinationUrl.ValueString() != "")
 		if !eventSet && !parentSet {
@@ -610,6 +621,26 @@ func (r *WebhookResource) ValidateConfig(ctx context.Context, req resource.Valid
 					"destination_url is also not set. The Emporix API requires a destination URL for every event; "+
 					"set one on this event or on the parent destination_url.", i, event.EventType.ValueString()),
 			)
+		}
+
+		if event.Subscribed.IsUnknown() {
+			continue
+		}
+		eventType := event.EventType.ValueString()
+		effective := event.Subscribed.IsNull() || event.Subscribed.ValueBool()
+		if prev, seen := subscribedByType[eventType]; seen {
+			if prev != effective && !conflictReported[eventType] {
+				resp.Diagnostics.AddAttributeError(
+					path.Root("events_configuration").AtListIndex(i).AtName("subscribed"),
+					"Conflicting subscribed values for event_type",
+					fmt.Sprintf("Multiple events_configuration entries share event_type %q with different subscribed "+
+						"values. Subscription status is tenant-wide per event_type, not per entry, so the API can't "+
+						"honor both - set subscribed consistently across all entries sharing this event_type.", eventType),
+				)
+				conflictReported[eventType] = true
+			}
+		} else {
+			subscribedByType[eventType] = effective
 		}
 	}
 }
@@ -880,10 +911,10 @@ func contentSignature(m EventConfigModel) string {
 	return string(b)
 }
 
-// correlateEventEntries maps each plan entry to a state index (-1 if none), matching by
-// exact content first (order-independent, so reorders/inserts don't misattribute
-// content onto the wrong id) and falling back to event_type + first-seen order for
-// whatever's left (i.e. genuinely new or edited entries).
+// correlateEventEntries maps each plan entry to a state index (-1 if none), each pass
+// only considering what the previous one left unmatched: known id first (needed since
+// the API omits secret_key on read, which would otherwise break content-matching for
+// entries that have one), then exact content, then event_type + first-seen order.
 func correlateEventEntries(plan, state []EventConfigModel) []int {
 	matched := make([]int, len(plan))
 	for i := range matched {
@@ -891,12 +922,34 @@ func correlateEventEntries(plan, state []EventConfigModel) []int {
 	}
 	usedState := make(map[int]bool, len(state))
 
+	idIndex := make(map[string]int, len(state))
+	for i, s := range state {
+		if !s.Id.IsNull() && !s.Id.IsUnknown() && s.Id.ValueString() != "" {
+			idIndex[s.Id.ValueString()] = i
+		}
+	}
+	for i, p := range plan {
+		if p.Id.IsNull() || p.Id.IsUnknown() || p.Id.ValueString() == "" {
+			continue
+		}
+		if idx, ok := idIndex[p.Id.ValueString()]; ok && !usedState[idx] {
+			matched[i] = idx
+			usedState[idx] = true
+		}
+	}
+
 	contentGroups := make(map[string][]int, len(state))
 	for i, s := range state {
+		if usedState[i] {
+			continue
+		}
 		key := contentSignature(s)
 		contentGroups[key] = append(contentGroups[key], i)
 	}
 	for i, p := range plan {
+		if matched[i] != -1 {
+			continue
+		}
 		key := contentSignature(p)
 		if queue := contentGroups[key]; len(queue) > 0 {
 			matched[i] = queue[0]

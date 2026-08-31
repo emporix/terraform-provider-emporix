@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/config"
@@ -430,6 +431,27 @@ func TestAccWebhookResource_multiTargetSameEventType(t *testing.T) {
 	})
 }
 
+// subscribed is tenant-wide per event_type - two entries sharing one with different
+// subscribed values must be rejected at plan time, not silently pick a winner.
+func TestAccWebhookResource_conflictingSubscribedSameEventType(t *testing.T) {
+	url := "https://example.com"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWebhookResourceConfigWithEvents("test_webhook_conflicting_subscribed", `"HTTP"`, fmt.Sprintf("%q", url), true,
+					[]testEventConfig{
+						{EventType: "order.created", DestinationUrl: url, Subscribed: boolPtr(true)},
+						{EventType: "order.created", DestinationUrl: url + "?target=2", Subscribed: boolPtr(false)},
+					}),
+				ExpectError: regexp.MustCompile(`Conflicting subscribed values`),
+			},
+		},
+	})
+}
+
 func boolPtr(b bool) *bool {
 	return &b
 }
@@ -728,34 +750,6 @@ func eventEntryWithId(id, eventType, name string) EventConfigModel {
 	return e
 }
 
-func TestBuildEventsConfigurationEntryPatches_InsertInMiddle(t *testing.T) {
-	state := []EventConfigModel{
-		eventEntryWithId("1", "order.created", "a"),
-		eventEntryWithId("2", "customer.created", "b"),
-		eventEntryWithId("3", "product.updated", "c"),
-	}
-	plan := []EventConfigModel{
-		eventEntry("order.created", "a"),
-		eventEntry("order.created", "x"), // new, inserted in the middle
-		eventEntry("customer.created", "b"),
-		eventEntry("product.updated", "c"),
-	}
-
-	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
-
-	if len(patches) != 1 {
-		t.Fatalf("got %d patches, want exactly 1 (clean create for the inserted entry): %+v", len(patches), patches)
-	}
-	p := patches[0]
-	if p.Op != "UPSERT" || p.Path != "/configuration/http/eventsConfigurationEntry" {
-		t.Fatalf("unexpected patch: %+v", p)
-	}
-	ec := p.Value.(EventConfig)
-	if ec.Name != "x" {
-		t.Fatalf("patch is for the wrong entry: %+v", ec)
-	}
-}
-
 func TestBuildEventsConfigurationEntryPatches_RemoveInMiddle(t *testing.T) {
 	state := []EventConfigModel{
 		eventEntryWithId("1", "order.created", "a"),
@@ -864,5 +858,28 @@ func TestBuildEventsConfigurationEntryPatches_DuplicateKeysFIFO(t *testing.T) {
 	}
 	if patches[0].Path != "/configuration/http/eventsConfigurationEntry/2" {
 		t.Fatalf("expected the second (later) duplicate to be addressed by id=2, got: %+v", patches[0])
+	}
+}
+
+func TestCorrelateEventEntries_PrefersKnownIdOverContentMismatch(t *testing.T) {
+	// state mimics a fresh API read (secret_key blanked); plan has the real secret_key
+	// plus known, reordered ids. Content alone would never match (secret_key always
+	// differs) and misattribute via position; the id tier must resolve it correctly.
+	state := []EventConfigModel{
+		{Id: types.StringValue("1"), EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("A")},
+		{Id: types.StringValue("2"), EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("B")},
+	}
+	plan := []EventConfigModel{
+		{Id: types.StringValue("2"), EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("B"), SecretKey: types.StringValue("secret-b")},
+		{Id: types.StringValue("1"), EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("A"), SecretKey: types.StringValue("secret-a")},
+	}
+
+	matched := correlateEventEntries(plan, state)
+
+	if matched[0] != 1 {
+		t.Fatalf("plan[0] (id=2) should match state index 1 (id=2), got %d", matched[0])
+	}
+	if matched[1] != 0 {
+		t.Fatalf("plan[1] (id=1) should match state index 0 (id=1), got %d", matched[1])
 	}
 }

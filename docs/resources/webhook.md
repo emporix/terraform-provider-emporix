@@ -229,6 +229,8 @@ The nested `subscribed` attribute exposes this status directly and lets you cont
 - Set `subscribed = false` on an event to unsubscribe it while keeping its `destination_url`, `headers`, and `secret_key` overrides configured in Terraform. This is different from removing the event from `events_configuration` entirely, which discards that configuration.
 - The attribute is also `Computed`, so it reflects the real subscription status read back from the API (e.g., if it was changed outside of Terraform), and will show up as drift on the next `plan`/`apply` if it doesn't match your configuration.
 
+Subscription status is tenant-wide per `event_type`, not per entry - the API has no concept of subscribing one target for an `event_type` while unsubscribing another. With multi-target `events_configuration` (multiple entries sharing an `event_type`), all of them must set `subscribed` consistently; `terraform plan` rejects a config where they disagree.
+
 ### Multi-Target Updates
 
 Changes are sent as per-entry PATCH operations addressed by `id` (`eventsConfigurationEntry`/`eventsConfigurationEntry/{id}`), not a whole-list replace - this is what lets multiple entries share the same `event_type` without one update clobbering another.
