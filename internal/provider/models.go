@@ -313,12 +313,20 @@ type HeaderFieldValue struct {
 
 // EventConfig represents event-specific configuration for both read and write operations.
 // Headers must use HeaderFieldValue wrapper. SecretKeyExists is used only in read responses.
+// Id is server-assigned and must never be set on write payloads.
+// ExcludedFields is a pointer so nil (omitted) and an explicit empty list can be told apart,
+// which a plain []string with `omitempty` cannot do (omitempty treats nil and len-0 alike).
 type EventConfig struct {
+	Id              string                      `json:"id,omitempty"`
 	EventType       string                      `json:"eventType"`
 	DestinationUrl  string                      `json:"destinationUrl,omitempty"`
 	SecretKey       string                      `json:"secretKey,omitempty"`
 	SecretKeyExists *bool                       `json:"secretKeyExists,omitempty"`
 	Headers         map[string]HeaderFieldValue `json:"headers,omitempty"`
+	Filter          string                      `json:"filter,omitempty"`
+	ExcludedFields  *[]string                   `json:"excludedFields,omitempty"`
+	Active          *bool                       `json:"active,omitempty"`
+	Name            string                      `json:"name,omitempty"`
 }
 
 // WebhookConfig contains provider-specific configuration returned by the GET API.
@@ -356,11 +364,6 @@ type WebhookConfigPartialUpdates struct {
 	Op    string      `json:"op"`
 	Path  string      `json:"path"`
 	Value interface{} `json:"value,omitempty"`
-}
-
-// WebhookListResponse represents the response for listing webhooks
-type WebhookListResponse struct {
-	Configs []WebhookConfigGet `json:"configs"`
 }
 
 // webhookCreateRequest is the creation payload for webhook configurations.

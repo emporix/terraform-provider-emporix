@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-08-31
+
+### Added
+
+- **emporix_webhook**
+  - Multi-target `events_configuration`: multiple entries may share the same `event_type`, each with a read-only `id`
+  - New per-entry attributes: `filter`, `excluded_fields`, `active`, `name`
+  - Updates now use per-entry PATCH instead of replacing the whole list
+
+### Fixes
+
+- **emporix_webhook**
+  - `SVIX`/`SVIX_SHARED` no longer send fields the API rejects, now validated up front
+  - Clearer error when creating an inactive webhook would leave the tenant with none active
+  - `terraform destroy` now always force-deletes a webhook, active or not, instead of requiring a separate deactivation step
+
+[0.11.2]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.11.2
+
 ## [0.11.1] - 2026-08-31
 
 ### Improvements

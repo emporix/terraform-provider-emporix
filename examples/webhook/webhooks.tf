@@ -1,7 +1,5 @@
 # Webhook Subscription Examples
-# API allows only 1 configuration of given type.
-# So you can have 1 http, 1 SVIX and 1 shared SVIX config.
-# To test, uncomment desiresd setup.
+# Only one config per provider_type is allowed per tenant.
 
 terraform {
   required_providers {
@@ -12,17 +10,14 @@ terraform {
   }
 }
 
-# Configure the Emporix provider
 provider "emporix" {
   tenant  = var.emporix_tenant
   api_url = var.emporix_api_url
 
-  # Use client credentials from your Custom API Key
   client_id     = var.emporix_client_id
   client_secret = var.emporix_client_secret
 }
 
-# Variables
 variable "emporix_tenant" {
   description = "Emporix tenant name"
   type        = string
@@ -47,34 +42,36 @@ variable "emporix_client_secret" {
   sensitive   = true
 }
 
-# =============================================================================
 # Example 1: SVIX Provider (Your Own Svix Server)
-# =============================================================================
-# Using your own Svix server instance. Requires destination URL to your Svix app.
-
 resource "emporix_webhook" "svix_webhook" {
   code          = "mySvixWebhook"
-  provider_type = "svix"
+  provider_type = "SVIX"
   active        = false
 
-  # Svix application secret key for signing
   secret_key = "<secret>"
+
+  # Ensures svix_shared_webhook (active = true) is created first, since the API rejects
+  # creating an inactive webhook while the tenant has none active yet.
+  depends_on = [emporix_webhook.svix_shared_webhook]
 }
 
-# =============================================================================
-# Example 2: Webhook with Event-Specific Configuration
-# =============================================================================
-# Define different destinations and settings for different event types.
-#
-# This example drives events_configuration from a variable and varies per-event headers only.
-# If you also need per-event overrides (destination_url, secret_key, subscribed), include those
-# attributes (as optional) in the variable's object type as well.
+# Example 2: SVIX_SHARED Provider (Emporix's Managed Svix) - accepts no configuration
+resource "emporix_webhook" "svix_shared_webhook" {
+  code          = "svixSharedWebhook"
+  provider_type = "SVIX_SHARED"
+  active        = true
+}
 
-variable "multi_event_webhook_events_configuration" {
-  description = "Event-specific configuration for multi_event_webhook, supplied via a variable."
+# Example 3: HTTP Webhook - per-event header overrides plus multi-target routing
+variable "http_webhook_events_configuration" {
+  description = "Event-specific configuration for http_webhook, supplied via a variable."
   type = list(object({
-    event_type = string
-    headers    = map(string)
+    event_type      = string
+    headers         = optional(map(string), {})
+    destination_url = optional(string)
+    filter          = optional(string)
+    excluded_fields = optional(list(string))
+    name            = optional(string)
   }))
   default = [
     {
@@ -98,24 +95,37 @@ variable "multi_event_webhook_events_configuration" {
     {
       event_type = "product.updated"
       headers    = {}
+    },
+    {
+      event_type      = "product.created"
+      name            = "products -> catalog sync"
+      destination_url = "https://example.com?target=catalog-sync"
+    },
+    {
+      event_type      = "product.created"
+      name            = "premium products -> merchandising review"
+      destination_url = "https://example.com?target=merchandising-review"
+      filter          = "$[?(@.code == 'PREMIUM')]"
+      excluded_fields = ["internalNotes"]
     }
   ]
 }
 
-resource "emporix_webhook" "multi_event_webhook" {
-  code            = "multiEventWebhook"
-  provider_type   = "http"
-  destination_url = "<URL>"
-  active          = true
+resource "emporix_webhook" "http_webhook" {
+  code            = "httpWebhook"
+  provider_type   = "HTTP"
+  destination_url = "https://example.com"
+  active          = false
 
   secret_key = "default-secret-key"
 
-  events_configuration = var.multi_event_webhook_events_configuration
+  events_configuration = var.http_webhook_events_configuration
+
+  # See svix_webhook's depends_on comment above.
+  depends_on = [emporix_webhook.svix_shared_webhook]
 }
 
-# =============================================================================
 # Outputs - Display current webhook configurations after terraform apply
-# =============================================================================
 
 output "webhook_configurations" {
   description = "List of all configured webhooks with their key settings"
@@ -129,13 +139,20 @@ output "webhook_configurations" {
       version         = emporix_webhook.svix_webhook.version
     },
     {
-      name            = "multi_event_webhook"
-      code            = emporix_webhook.multi_event_webhook.code
-      active          = emporix_webhook.multi_event_webhook.active
-      provider_type   = emporix_webhook.multi_event_webhook.provider_type
-      destination_url = emporix_webhook.multi_event_webhook.destination_url
-      version         = emporix_webhook.multi_event_webhook.version
-      headers         = emporix_webhook.multi_event_webhook.headers
+      name            = "http_webhook"
+      code            = emporix_webhook.http_webhook.code
+      active          = emporix_webhook.http_webhook.active
+      provider_type   = emporix_webhook.http_webhook.provider_type
+      destination_url = emporix_webhook.http_webhook.destination_url
+      version         = emporix_webhook.http_webhook.version
+      headers         = emporix_webhook.http_webhook.headers
+    },
+    {
+      name          = "svix_shared_webhook"
+      code          = emporix_webhook.svix_shared_webhook.code
+      active        = emporix_webhook.svix_shared_webhook.active
+      provider_type = emporix_webhook.svix_shared_webhook.provider_type
+      version       = emporix_webhook.svix_shared_webhook.version
     }
   ]
 }
@@ -148,10 +165,15 @@ output "webhook_summary" {
       active        = emporix_webhook.svix_webhook.active
       provider_type = emporix_webhook.svix_webhook.provider_type
     }
-    "multi_event_webhook" = {
-      code          = emporix_webhook.multi_event_webhook.code
-      active        = emporix_webhook.multi_event_webhook.active
-      provider_type = emporix_webhook.multi_event_webhook.provider_type
+    "http_webhook" = {
+      code          = emporix_webhook.http_webhook.code
+      active        = emporix_webhook.http_webhook.active
+      provider_type = emporix_webhook.http_webhook.provider_type
+    }
+    "svix_shared_webhook" = {
+      code          = emporix_webhook.svix_shared_webhook.code
+      active        = emporix_webhook.svix_shared_webhook.active
+      provider_type = emporix_webhook.svix_shared_webhook.provider_type
     }
   }
 }

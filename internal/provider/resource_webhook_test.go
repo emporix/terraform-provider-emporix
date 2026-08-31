@@ -3,20 +3,19 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/config"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 func TestAccWebhookResource_basic(t *testing.T) {
-	// Enable force deletion for webhook tests
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
+
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -25,11 +24,11 @@ func TestAccWebhookResource_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccWebhookResourceConfig("test_webhook_1", `"HTTP"`, `"<URL>"`, true, nil, nil),
+				Config: testAccWebhookResourceConfig("test_webhook_1", `"HTTP"`, fmt.Sprintf("%q", url), true, nil, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_1"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "HTTP"),
-					resource.TestCheckResourceAttr("emporix_webhook.test", "destination_url", "<URL>"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "destination_url", url),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "active", "true"),
 					resource.TestCheckResourceAttrSet("emporix_webhook.test", "version"),
 				),
@@ -44,7 +43,7 @@ func TestAccWebhookResource_basic(t *testing.T) {
 			},
 			// Update testing - change active to true
 			{
-				Config: testAccWebhookResourceConfig("test_webhook_1", `"HTTP"`, `"<URL>"`, true, nil, nil),
+				Config: testAccWebhookResourceConfig("test_webhook_1", `"HTTP"`, fmt.Sprintf("%q", url), true, nil, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_1"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "active", "true"),
@@ -54,30 +53,9 @@ func TestAccWebhookResource_basic(t *testing.T) {
 	})
 }
 
-// func TestAccWebhookResource_svixProvider(t *testing.T) {
-// 	resource.Test(t, resource.TestCase{
-// 		PreCheck:                 func() { testAccPreCheck(t) },
-// 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-// 		CheckDestroy:             testAccCheckWebhookDestroy,
-// 		Steps: []resource.TestStep{
-// 			// Create with SVIX provider
-// 			{
-// 				Config: testAccWebhookResourceConfig("test_webhook_svix", `"svix"`, `"https://my-app.svix.com"`, false, nil, nil),
-// 				Check: resource.ComposeAggregateTestCheckFunc(
-// 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_svix"),
-// 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "SVIX"),
-// 					resource.TestCheckResourceAttr("emporix_webhook.test", "destination_url", "https://my-app.svix.com"),
-// 				),
-// 			},
-// 		},
-// 	})
-// }
-
 func TestAccWebhookResource_withSecretKey(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
+
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -86,7 +64,7 @@ func TestAccWebhookResource_withSecretKey(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with secret key (HTTP provider)
 			{
-				Config: testAccWebhookResourceConfigWithSecretKey("test_webhook_secret", `"HTTP"`, `"<URL>"`, true, `"my-secret-key"`),
+				Config: testAccWebhookResourceConfigWithSecretKey("test_webhook_secret", `"HTTP"`, fmt.Sprintf("%q", url), true, `"my-secret-key"`),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_secret"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "HTTP"),
@@ -98,10 +76,8 @@ func TestAccWebhookResource_withSecretKey(t *testing.T) {
 }
 
 func TestAccWebhookResource_withHeaders(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
+
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -110,7 +86,7 @@ func TestAccWebhookResource_withHeaders(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with headers
 			{
-				Config: testAccWebhookResourceConfigWithHeaders("test_webhook_headers", `"HTTP"`, `"<URL>"`, true, map[string]string{"X-Custom-Header": "custom-value", "X-Api-Key": "api-key-123"}),
+				Config: testAccWebhookResourceConfigWithHeaders("test_webhook_headers", `"HTTP"`, fmt.Sprintf("%q", url), true, map[string]string{"X-Custom-Header": "custom-value", "X-Api-Key": "api-key-123"}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_headers"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "provider_type", "HTTP"),
@@ -124,10 +100,8 @@ func TestAccWebhookResource_withHeaders(t *testing.T) {
 }
 
 func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
+
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -136,10 +110,10 @@ func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with events configuration
 			{
-				Config: testAccWebhookResourceConfigWithEvents("test_webhook_events", `"HTTP"`, `"<URL>"`, true,
+				Config: testAccWebhookResourceConfigWithEvents("test_webhook_events", `"HTTP"`, fmt.Sprintf("%q", url), true,
 					[]testEventConfig{
-						{EventType: "order.created", DestinationUrl: "<URL>"},
-						{EventType: "customer.created", DestinationUrl: "<URL>"},
+						{EventType: "order.created", DestinationUrl: url},
+						{EventType: "customer.created", DestinationUrl: url},
 					}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_events"),
@@ -152,21 +126,18 @@ func TestAccWebhookResource_withEventsConfiguration(t *testing.T) {
 	})
 }
 
-// TestAccWebhookResource_eventsConfigurationFromVariable is a regression test for a bug where
-// assigning events_configuration from a Terraform variable (whose declared type omits the
-// Computed attributes destination_url/secret_key/subscribed) made Terraform widen the value to
-// the resource schema's type and mark the whole list Unknown, crashing ValidateConfig. The same
-// literal value written directly in the resource block never went through that widening, so the
-// bug only showed up when the value came through a variable/module input. PlanOnly is enough
-// here: the crash happened during ValidateConfig, before any API call.
+// Regression: a variable-sourced events_configuration used to widen to Unknown and
+// crash ValidateConfig. PlanOnly + ExpectNonEmptyPlan since this step never applies.
 func TestAccWebhookResource_eventsConfigurationFromVariable(t *testing.T) {
+	url := "https://example.com"
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckWebhookDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: `
+				Config: fmt.Sprintf(`
 variable "events_configuration" {
   type = list(object({
     event_type = string
@@ -178,12 +149,12 @@ variable "events_configuration" {
 resource "emporix_webhook" "test" {
   code             = "test_webhook_events_from_var"
   provider_type    = "HTTP"
-  destination_url  = "<URL>"
+  destination_url  = %q
   active           = true
 
   events_configuration = var.events_configuration
 }
-`,
+`, url),
 				ConfigVariables: map[string]config.Variable{
 					"events_configuration": config.ListVariable(
 						config.ObjectVariable(map[string]config.Variable{
@@ -194,19 +165,17 @@ resource "emporix_webhook" "test" {
 						}),
 					),
 				},
-				PlanOnly: true,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
 			},
 		},
 	})
 }
 
 func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	code := "test_webhook_events_lifecycle"
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -215,11 +184,11 @@ func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Step 1: create with 3 event subscriptions.
 			{
-				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, `"<URL>"`, true,
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", url), true,
 					[]testEventConfig{
-						{EventType: "order.created", DestinationUrl: "<URL>"},
-						{EventType: "customer.created", DestinationUrl: "<URL>"},
-						{EventType: "product.updated", DestinationUrl: "<URL>"},
+						{EventType: "order.created", DestinationUrl: url},
+						{EventType: "customer.created", DestinationUrl: url},
+						{EventType: "product.updated", DestinationUrl: url},
 					}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "3"),
@@ -236,14 +205,12 @@ func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
 					),
 				),
 			},
-			// Step 2: drop "product.updated" - confirm it's actually removed from the
-			// API-side configuration and its subscription was unsubscribed, while the
-			// other two remain untouched.
+			// Step 2: drop "product.updated" - confirm it's removed and unsubscribed, others untouched.
 			{
-				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, `"<URL>"`, true,
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", url), true,
 					[]testEventConfig{
-						{EventType: "order.created", DestinationUrl: "<URL>"},
-						{EventType: "customer.created", DestinationUrl: "<URL>"},
+						{EventType: "order.created", DestinationUrl: url},
+						{EventType: "customer.created", DestinationUrl: url},
 					}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "2"),
@@ -259,7 +226,7 @@ func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
 			// Step 3: remove events_configuration entirely - confirm the API-side
 			// configuration is fully cleared and every event was unsubscribed.
 			{
-				Config: testAccWebhookResourceConfig(code, `"HTTP"`, `"<URL>"`, true, nil, nil),
+				Config: testAccWebhookResourceConfig(code, `"HTTP"`, fmt.Sprintf("%q", url), true, nil, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckNoResourceAttr("emporix_webhook.test", "events_configuration.0.event_type"),
 					testAccCheckWebhookEventsConfigurationCount(code, 0),
@@ -274,23 +241,17 @@ func TestAccWebhookResource_eventsConfigurationLifecycle(t *testing.T) {
 }
 
 func TestAccWebhookResource_eventDestinationUrlFallback(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	code := "test_webhook_dest_url_fallback"
-	parentUrl := "<URL>"
-	overrideUrl := "<URL_2>"
+	parentUrl := "https://example.com"
+	overrideUrl := parentUrl + "?target=2"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckWebhookDestroy,
 		Steps: []resource.TestStep{
-			// Step 1: one event omits destination_url entirely and must fall back to the
-			// parent destination_url, both in state and on the API side. A second event
-			// with an explicit override must keep its own value.
+			// Step 1: one event omits destination_url (falls back to parent), another overrides it.
 			{
 				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", parentUrl), true,
 					[]testEventConfig{
@@ -304,9 +265,7 @@ func TestAccWebhookResource_eventDestinationUrlFallback(t *testing.T) {
 					testAccCheckEventDestinationUrl(code, "customer.created", overrideUrl),
 				),
 			},
-			// Step 2: an event that explicitly sets destination_url = "" must also fall
-			// back to the parent, instead of sending a blank value to the API (which the
-			// API rejects with "destinationUrl must not be blank").
+			// Step 2: destination_url = "" must also fall back to the parent, not send blank.
 			{
 				Config: fmt.Sprintf(`
 resource "emporix_webhook" "test" {
@@ -333,12 +292,9 @@ resource "emporix_webhook" "test" {
 }
 
 func TestAccWebhookResource_subscribedToggle(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
 
 	code := "test_webhook_subscribed_toggle"
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -347,10 +303,10 @@ func TestAccWebhookResource_subscribedToggle(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Step 1: create with 2 events, both implicitly subscribed (default true).
 			{
-				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, `"<URL>"`, true,
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", url), true,
 					[]testEventConfig{
-						{EventType: "order.created", DestinationUrl: "<URL>"},
-						{EventType: "customer.created", DestinationUrl: "<URL>"},
+						{EventType: "order.created", DestinationUrl: url},
+						{EventType: "customer.created", DestinationUrl: url},
 					}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "2"),
@@ -363,22 +319,19 @@ func TestAccWebhookResource_subscribedToggle(t *testing.T) {
 					),
 				),
 			},
-			// Step 2: set subscribed = false on "order.created" while keeping its
-			// destination_url configured. This must unsubscribe the event on the API
-			// side (via UNSUBSCRIBE) WITHOUT removing its events_configuration entry -
-			// unlike dropping the event entirely, the override configuration stays intact.
+			// Step 2: subscribed = false must UNSUBSCRIBE without removing the entry itself.
 			{
-				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, `"<URL>"`, true,
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", url), true,
 					[]testEventConfig{
-						{EventType: "order.created", DestinationUrl: "<URL>", Subscribed: boolPtr(false)},
-						{EventType: "customer.created", DestinationUrl: "<URL>"},
+						{EventType: "order.created", DestinationUrl: url, Subscribed: boolPtr(false)},
+						{EventType: "customer.created", DestinationUrl: url},
 					}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "2"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.0.subscribed", "false"),
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.1.subscribed", "true"),
 					testAccCheckWebhookEventsConfigurationCount(code, 2),
-					testAccCheckEventDestinationUrl(code, "order.created", "<URL>"),
+					testAccCheckEventDestinationUrl(code, "order.created", url),
 					testAccCheckEventSubscriptionStatus(
 						[]string{"customer.created"},
 						[]string{"order.created"},
@@ -387,10 +340,10 @@ func TestAccWebhookResource_subscribedToggle(t *testing.T) {
 			},
 			// Step 3: re-subscribe "order.created" by setting subscribed back to true.
 			{
-				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, `"<URL>"`, true,
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", url), true,
 					[]testEventConfig{
-						{EventType: "order.created", DestinationUrl: "<URL>", Subscribed: boolPtr(true)},
-						{EventType: "customer.created", DestinationUrl: "<URL>"},
+						{EventType: "order.created", DestinationUrl: url, Subscribed: boolPtr(true)},
+						{EventType: "customer.created", DestinationUrl: url},
 					}),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "2"),
@@ -408,10 +361,8 @@ func TestAccWebhookResource_subscribedToggle(t *testing.T) {
 }
 
 func TestAccWebhookResource_requiresReplace(t *testing.T) {
-	os.Setenv("EMPORIX_WEBHOOK_FORCE_DELETE", "true")
-	t.Cleanup(func() {
-		os.Unsetenv("EMPORIX_WEBHOOK_FORCE_DELETE")
-	})
+
+	url := "https://example.com"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -420,17 +371,82 @@ func TestAccWebhookResource_requiresReplace(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create with code1
 			{
-				Config: testAccWebhookResourceConfig("test_webhook_code1", `"HTTP"`, `"<URL>"`, true, nil, nil),
+				Config: testAccWebhookResourceConfig("test_webhook_code1", `"HTTP"`, fmt.Sprintf("%q", url), true, nil, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_code1"),
 				),
 			},
 			// Change code (should require replace)
 			{
-				Config: testAccWebhookResourceConfig("test_webhook_code2", `"HTTP"`, `"<URL>"`, true, nil, nil),
+				Config: testAccWebhookResourceConfig("test_webhook_code2", `"HTTP"`, fmt.Sprintf("%q", url), true, nil, nil),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_webhook.test", "code", "test_webhook_code2"),
 				),
+			},
+		},
+	})
+}
+
+// Two entries sharing an event_type must get distinct ids and update independently.
+func TestAccWebhookResource_multiTargetSameEventType(t *testing.T) {
+
+	code := "test_webhook_multi_target"
+	url := "https://example.com"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckWebhookDestroy,
+		Steps: []resource.TestStep{
+			// Step 1: two entries for the same event_type, routed to different URLs.
+			{
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", url), true,
+					[]testEventConfig{
+						{EventType: "order.created", DestinationUrl: url},
+						{EventType: "order.created", DestinationUrl: url + "?target=2"},
+					}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "2"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.0.event_type", "order.created"),
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.1.event_type", "order.created"),
+					resource.TestCheckResourceAttrSet("emporix_webhook.test", "events_configuration.0.id"),
+					resource.TestCheckResourceAttrSet("emporix_webhook.test", "events_configuration.1.id"),
+					testAccCheckDistinctEventEntryIds(code, "order.created", 2),
+				),
+			},
+			// Step 2: change only the second entry's URL - both must still exist independently.
+			{
+				Config: testAccWebhookResourceConfigWithEvents(code, `"HTTP"`, fmt.Sprintf("%q", url), true,
+					[]testEventConfig{
+						{EventType: "order.created", DestinationUrl: url},
+						{EventType: "order.created", DestinationUrl: url + "?target=3"},
+					}),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("emporix_webhook.test", "events_configuration.#", "2"),
+					testAccCheckDistinctEventEntryIds(code, "order.created", 2),
+					testAccCheckEventEntryUrls(code, "order.created", []string{url, url + "?target=3"}),
+				),
+			},
+		},
+	})
+}
+
+// subscribed is tenant-wide per event_type - two entries sharing one with different
+// subscribed values must be rejected at plan time, not silently pick a winner.
+func TestAccWebhookResource_conflictingSubscribedSameEventType(t *testing.T) {
+	url := "https://example.com"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWebhookResourceConfigWithEvents("test_webhook_conflicting_subscribed", `"HTTP"`, fmt.Sprintf("%q", url), true,
+					[]testEventConfig{
+						{EventType: "order.created", DestinationUrl: url, Subscribed: boolPtr(true)},
+						{EventType: "order.created", DestinationUrl: url + "?target=2", Subscribed: boolPtr(false)},
+					}),
+				ExpectError: regexp.MustCompile(`Conflicting subscribed values`),
 			},
 		},
 	})
@@ -545,9 +561,7 @@ func testAccCheckWebhookEventsConfigurationCount(code string, want int) resource
 	}
 }
 
-// testAccCheckEventSubscriptionStatus verifies, directly against the API, that the given
-// event types are actually SUBSCRIBED and that the given event types are NOT SUBSCRIBED
-// (either absent from the list, or reported with a non-SUBSCRIBED status).
+// Verifies, against the API, that wantSubscribed are SUBSCRIBED and wantNotSubscribed aren't.
 func testAccCheckEventSubscriptionStatus(wantSubscribed, wantNotSubscribed []string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		client, err := getTestClient()
@@ -608,41 +622,264 @@ func testAccCheckEventDestinationUrl(code, eventType, want string) resource.Test
 	}
 }
 
-// testAccCheckWebhookDestroy verifies that webhooks have been destroyed
+// Verifies wantCount entries exist for eventType, each with a non-empty, unique id.
+func testAccCheckDistinctEventEntryIds(code, eventType string, wantCount int) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		client, err := getTestClient()
+		if err != nil {
+			return fmt.Errorf("failed to get test client: %w", err)
+		}
+
+		webhook, err := client.GetWebhook(context.Background(), code)
+		if err != nil {
+			return fmt.Errorf("failed to get webhook %q: %w", code, err)
+		}
+		if webhook.Configuration == nil {
+			return fmt.Errorf("webhook %q: configuration is nil", code)
+		}
+
+		seen := make(map[string]struct{})
+		count := 0
+		for _, event := range webhook.Configuration.EventsConfiguration {
+			if event.EventType != eventType {
+				continue
+			}
+			count++
+			if event.Id == "" {
+				return fmt.Errorf("webhook %q: entry for %q has no id", code, eventType)
+			}
+			if _, dup := seen[event.Id]; dup {
+				return fmt.Errorf("webhook %q: duplicate id %q found among %q entries", code, event.Id, eventType)
+			}
+			seen[event.Id] = struct{}{}
+		}
+		if count != wantCount {
+			return fmt.Errorf("webhook %q: found %d entries for %q, want %d", code, count, eventType, wantCount)
+		}
+		return nil
+	}
+}
+
+// Verifies the set of destinationUrls across entries for eventType matches wantUrls (order-independent).
+func testAccCheckEventEntryUrls(code, eventType string, wantUrls []string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		client, err := getTestClient()
+		if err != nil {
+			return fmt.Errorf("failed to get test client: %w", err)
+		}
+
+		webhook, err := client.GetWebhook(context.Background(), code)
+		if err != nil {
+			return fmt.Errorf("failed to get webhook %q: %w", code, err)
+		}
+		if webhook.Configuration == nil {
+			return fmt.Errorf("webhook %q: configuration is nil", code)
+		}
+
+		want := make(map[string]struct{}, len(wantUrls))
+		for _, u := range wantUrls {
+			want[u] = struct{}{}
+		}
+
+		got := make(map[string]struct{})
+		for _, event := range webhook.Configuration.EventsConfiguration {
+			if event.EventType == eventType {
+				got[event.DestinationUrl] = struct{}{}
+			}
+		}
+
+		if len(got) != len(want) {
+			return fmt.Errorf("webhook %q: event %q destination URLs = %v, want %v", code, eventType, keys(got), wantUrls)
+		}
+		for u := range want {
+			if _, ok := got[u]; !ok {
+				return fmt.Errorf("webhook %q: event %q missing expected destination URL %q (got %v)", code, eventType, u, keys(got))
+			}
+		}
+		return nil
+	}
+}
+
+func keys(m map[string]struct{}) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	return ks
+}
+
+// testAccCheckWebhookDestroy verifies that webhooks have been destroyed.
 func testAccCheckWebhookDestroy(s *terraform.State) error {
 	ctx := context.Background()
 
-	// Get configured client
 	client, err := getTestClient()
 	if err != nil {
 		return fmt.Errorf("failed to get test client: %w", err)
 	}
 
-	// Iterate through all resources in state
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "emporix_webhook" {
 			continue
 		}
 
 		code := rs.Primary.Attributes["code"]
-
-		// Try to get the webhook configuration
 		_, err := client.GetWebhook(ctx, code)
-
-		// If not found, resource was successfully destroyed
 		if IsNotFound(err) {
 			continue
 		}
-
-		// If other error, fail the test
 		if err != nil {
 			return fmt.Errorf("unexpected error checking webhook: %w", err)
 		}
 
-		// If no error, webhook still exists - try force delete
 		_ = client.DeleteWebhook(ctx, code)
 		return fmt.Errorf("webhook %s still exists after destroy", code)
 	}
 
 	return nil
+}
+
+// --- buildEventsConfigurationEntryPatches: correlateEventEntries content-match correlation ---
+
+func eventEntry(eventType, name string) EventConfigModel {
+	return EventConfigModel{EventType: types.StringValue(eventType), Name: types.StringValue(name)}
+}
+
+func eventEntryWithId(id, eventType, name string) EventConfigModel {
+	e := eventEntry(eventType, name)
+	e.Id = types.StringValue(id)
+	return e
+}
+
+func TestBuildEventsConfigurationEntryPatches_RemoveInMiddle(t *testing.T) {
+	state := []EventConfigModel{
+		eventEntryWithId("1", "order.created", "a"),
+		eventEntryWithId("2", "customer.created", "b"),
+		eventEntryWithId("3", "product.updated", "c"),
+	}
+	plan := []EventConfigModel{
+		eventEntry("order.created", "a"),
+		eventEntry("product.updated", "c"),
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 1 {
+		t.Fatalf("got %d patches, want exactly 1 (clean remove of id=2): %+v", len(patches), patches)
+	}
+	p := patches[0]
+	if p.Op != "REMOVE" || p.Path != "/configuration/http/eventsConfigurationEntry/2" {
+		t.Fatalf("unexpected patch: %+v", p)
+	}
+}
+
+func TestBuildEventsConfigurationEntryPatches_PureReorder_NoPatches(t *testing.T) {
+	state := []EventConfigModel{
+		eventEntryWithId("1", "order.created", "a"),
+		eventEntryWithId("2", "customer.created", "b"),
+		eventEntryWithId("3", "product.updated", "c"),
+	}
+	plan := []EventConfigModel{
+		eventEntry("product.updated", "c"),
+		eventEntry("customer.created", "b"),
+		eventEntry("order.created", "a"),
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 0 {
+		t.Fatalf("got %d patches, want 0 for a pure reorder with unchanged content: %+v", len(patches), patches)
+	}
+}
+
+func TestBuildEventsConfigurationEntryPatches_InsertInMiddleOfSameTypeGroup(t *testing.T) {
+	// Insert a new entry between two unchanged same-event_type entries - only the new
+	// one should patch; the other two must be recognized as unchanged despite the shift.
+	state := []EventConfigModel{
+		eventEntryWithId("1", "product.created", "catalog sync"),
+		eventEntryWithId("2", "product.created", "merch review"),
+	}
+	plan := []EventConfigModel{
+		eventEntry("product.created", "catalog sync"),
+		eventEntry("product.created", "flash sale"), // new, inserted in the middle
+		eventEntry("product.created", "merch review"),
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 1 {
+		t.Fatalf("got %d patches, want exactly 1 (clean create for the inserted entry): %+v", len(patches), patches)
+	}
+	p := patches[0]
+	if p.Op != "UPSERT" || p.Path != "/configuration/http/eventsConfigurationEntry" {
+		t.Fatalf("unexpected patch: %+v", p)
+	}
+	ec := p.Value.(EventConfig)
+	if ec.Name != "flash sale" {
+		t.Fatalf("patch is for the wrong entry: %+v", ec)
+	}
+}
+
+func TestBuildEventsConfigurationEntryPatches_RenameIsInPlaceUpdate(t *testing.T) {
+	// name is purely descriptive per the API docs - changing it alone must PATCH the
+	// existing id, not delete+create, even with no other entries of the same event_type.
+	state := []EventConfigModel{
+		eventEntryWithId("1", "product.created", "old label"),
+	}
+	plan := []EventConfigModel{
+		eventEntry("product.created", "new label"),
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 1 {
+		t.Fatalf("got %d patches, want exactly 1 (in-place rename): %+v", len(patches), patches)
+	}
+	p := patches[0]
+	if p.Op != "UPSERT" || p.Path != "/configuration/http/eventsConfigurationEntry/1" {
+		t.Fatalf("expected an in-place UPSERT on id=1, got: %+v", p)
+	}
+}
+
+func TestBuildEventsConfigurationEntryPatches_DuplicateKeysFIFO(t *testing.T) {
+	// Same event_type, no name - must pair up in encounter order, not arbitrarily.
+	state := []EventConfigModel{
+		eventEntryWithId("1", "product.created", ""),
+		eventEntryWithId("2", "product.created", ""),
+	}
+	plan := []EventConfigModel{
+		eventEntry("product.created", ""),
+		{EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("https://changed.example.com")},
+	}
+
+	patches := buildEventsConfigurationEntryPatches("/configuration/http/eventsConfigurationEntry", plan, state)
+
+	if len(patches) != 1 {
+		t.Fatalf("got %d patches, want exactly 1 (only the second entry's destination_url changed): %+v", len(patches), patches)
+	}
+	if patches[0].Path != "/configuration/http/eventsConfigurationEntry/2" {
+		t.Fatalf("expected the second (later) duplicate to be addressed by id=2, got: %+v", patches[0])
+	}
+}
+
+func TestCorrelateEventEntries_PrefersKnownIdOverContentMismatch(t *testing.T) {
+	// state mimics a fresh API read (secret_key blanked); plan has the real secret_key
+	// plus known, reordered ids. Content alone would never match (secret_key always
+	// differs) and misattribute via position; the id tier must resolve it correctly.
+	state := []EventConfigModel{
+		{Id: types.StringValue("1"), EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("A")},
+		{Id: types.StringValue("2"), EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("B")},
+	}
+	plan := []EventConfigModel{
+		{Id: types.StringValue("2"), EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("B"), SecretKey: types.StringValue("secret-b")},
+		{Id: types.StringValue("1"), EventType: types.StringValue("product.created"), DestinationUrl: types.StringValue("A"), SecretKey: types.StringValue("secret-a")},
+	}
+
+	matched := correlateEventEntries(plan, state)
+
+	if matched[0] != 1 {
+		t.Fatalf("plan[0] (id=2) should match state index 1 (id=2), got %d", matched[0])
+	}
+	if matched[1] != 0 {
+		t.Fatalf("plan[1] (id=1) should match state index 0 (id=1), got %d", matched[1])
+	}
 }
