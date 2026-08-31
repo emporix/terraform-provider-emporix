@@ -124,8 +124,8 @@ resource "emporix_webhook" "multi_target_webhook" {
 ### Optional
 
 - `active` (Boolean) Whether this webhook configuration is active. Only one configuration per tenant can be active at a time. The API requires at least one active webhook, so if this is the last active webhook, deactivating it will be prevented. Defaults to `false`.
-- `destination_url` (String) "Destination URL where event should be sent." (API description) `HTTP`-only, and must be reachable via `HEAD`/`OPTIONS`. Not used by `SVIX`/`SVIX_SHARED`.
-- `secret_key` (String, Sensitive) `HTTP` (sent as `secretKey`): "Optional secret key which could be used to sign the message" (HMAC SHA-256). `SVIX` (sent as `apiKey`): "API Key for connecting to SVIX" - required in practice and must be a real Svix account key (Emporix authenticates against Svix's API with it; a placeholder fails with a 500). Not accepted by `SVIX_SHARED`.
+- `destination_url` (String) Destination URL where event should be sent. `HTTP`-only, and must be reachable. Not used by `SVIX`/`SVIX_SHARED`.
+- `secret_key` (String, Sensitive) `HTTP`: Optional secret key which could be used to sign the message (HMAC SHA-256). `SVIX`: API Key for connecting to SVIX - required in practice and must be a real Svix account key (Emporix authenticates against Svix's API with it; a placeholder fails with a 500). Not accepted by `SVIX_SHARED`.
 - `headers` (Map of String) HTTP headers to include in webhook requests. Keys and values are strings. `HTTP`-only - rejected by the API for `SVIX`/`SVIX_SHARED`.
 - `events_configuration` (Block List) Event-specific configuration. Allows different handling for different event types. `HTTP`-only - rejected by the API for `SVIX`/`SVIX_SHARED`. (see [below for nested schema](#nestedblockfor-events_configuration))
 
