@@ -206,7 +206,9 @@ func (r *PriceModelsResource) Schema(ctx context.Context, req resource.SchemaReq
 			},
 			"force_delete": schema.BoolAttribute{
 				MarkdownDescription: "If `true`, deleting this resource also deletes (asynchronously) all prices assigned to this price model. " +
-					"Requires the `price.pricemodel_manage_admin` scope. Defaults to `false`.",
+					"Requires the `price.pricemodel_manage_admin` scope. Defaults to `false`. Does not override the API's separate rule that " +
+					"the tenant's current default price model (`default = true`) can never be deleted, even with `force_delete`; " +
+					"a different price model must be made default first.",
 				Optional: true,
 			},
 		},
