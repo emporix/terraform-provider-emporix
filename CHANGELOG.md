@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [0.11.2]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.11.2
 
+## [0.11.1] - 2026-08-31
+
+### Improvements
+
+- **Documentation: emporix_price_models**
+  - documented that the tenant's current default price model can never be deleted, even with `force_delete` - a different price model must be assigned as the default first
+
+[0.11.1]: https://github.com/emporix/terraform-provider-emporix/releases/tag/v0.11.1
+
 ## [0.11.0] - 2026-08-24
 
 ### Added

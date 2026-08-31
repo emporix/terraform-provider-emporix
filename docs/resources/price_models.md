@@ -12,8 +12,7 @@ quantity tiers that prices assigned to it are calculated against. See the
 [Price Models API](https://developer.emporix.io/api-references-1/readme/api-reference-26/price-models) for details.
 
 **Delete Behavior:** When you remove the resource from Terraform or run `terraform destroy`, the price model is
-**deleted** from Emporix. If prices are still assigned to the price model, the delete fails unless `force_delete`
-is set to `true`.
+**deleted** from Emporix. If prices are still assigned to the price model, the delete fails unless `force_delete` is set to `true`. The tenant's current default price model can never be deleted, even with `force_delete` - a different price model must be assigned as the default first.
 
 ## Pricing Strategies
 
@@ -159,7 +158,7 @@ resource "emporix_price_models" "tiered" {
 - `includes_markup` (Boolean) Whether the price model operates in markup preview mode. Defaults to `false`.
 - `default` (Boolean) Whether this is the tenant's default price model. Defaults to `false`.
 - `description` (Map of String) Optional price model description as a map of language codes to translated descriptions.
-- `force_delete` (Boolean) If `true`, deleting this resource also deletes (asynchronously) all prices assigned to this price model. Requires the `price.pricemodel_manage_admin` scope. Defaults to `false`.
+- `force_delete` (Boolean) If `true`, deleting this resource also deletes (asynchronously) all prices assigned to this price model. Requires the `price.pricemodel_manage_admin` scope. Defaults to `false`. Does not override the tenant's current default price model being undeletable - a different price model must be assigned as the default first.
 
 ### Nested Schema for `tier_definition`
 
