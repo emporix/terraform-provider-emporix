@@ -100,6 +100,9 @@ testacc-customentity: deps
 testacc-pricemodels: deps
 	TF_ACC=1 go test ./internal/provider -v -run TestAccPriceModels -timeout 30m
 
+testacc-schema: deps
+	TF_ACC=1 go test ./internal/provider -v -run TestAccSchemaResource -timeout 30m
+
 # Run acceptance tests with coverage
 testacc-coverage: deps
 	TF_ACC=1 go test ./internal/provider -v -cover -coverprofile=coverage.out -timeout 30m
@@ -158,6 +161,7 @@ help:
 	@echo "  testacc-currency    - Run currency acceptance tests"
 	@echo "  testacc-customentity- Run custom entity acceptance tests"
 	@echo "  testacc-pricemodels - Run price models acceptance tests"
+	@echo "  testacc-schema      - Run schema acceptance tests"
 	@echo "  testacc-coverage    - Run acceptance tests with coverage"
 	@echo "  coverage-html       - View coverage report in browser"
 	@echo ""
