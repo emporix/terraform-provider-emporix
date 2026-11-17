@@ -21,7 +21,6 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &SchemaResource{}
 var _ resource.ResourceWithImportState = &SchemaResource{}
-var _ resource.ResourceWithValidateConfig = &SchemaResource{}
 
 func NewSchemaResource() resource.Resource {
 	return &SchemaResource{}
@@ -113,37 +112,6 @@ func (r *SchemaResource) Configure(ctx context.Context, req resource.ConfigureRe
 	}
 
 	r.client = client
-}
-
-var siteAwareUnsupportedTypes = map[string]bool{
-	"CART": true, "CATEGORY": true, "COMPANY": true, "COUPON": true, "CUSTOMER": true, "CUSTOMER_ADDRESS": true,
-	"ORDER": true, "QUOTE": true, "RETURN": true, "PRICE_LIST": true, "SITE": true, "VENDOR": true,
-}
-
-func (r *SchemaResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data SchemaResourceModel
-
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !data.SiteAware.ValueBool() || data.Types.IsNull() || data.Types.IsUnknown() {
-		return
-	}
-
-	for _, element := range data.Types.Elements() {
-		schemaType, ok := element.(types.String)
-		if !ok || schemaType.IsUnknown() || !siteAwareUnsupportedTypes[schemaType.ValueString()] {
-			return
-		}
-	}
-
-	resp.Diagnostics.AddAttributeError(
-		path.Root("site_aware"),
-		"Unsupported Schema Type for Site-Aware Mixin",
-		"site_aware = true requires `types` to include PRODUCT, CUSTOM_ENTITY or a custom entity type.",
-	)
 }
 
 func (r *SchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

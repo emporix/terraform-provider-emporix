@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -304,7 +303,7 @@ func TestAccSchemaResource_siteAware(t *testing.T) {
 		CheckDestroy:             testAccCheckSchemaDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccSchemaResourceConfigSiteAware("test-schema-site-aware-1", "PRODUCT", ""),
+				Config: testAccSchemaResourceConfigSiteAware("test-schema-site-aware-1", ""),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_schema.test", "id", "test-schema-site-aware-1"),
 					resource.TestCheckResourceAttr("emporix_schema.test", "site_aware", "false"),
@@ -312,7 +311,7 @@ func TestAccSchemaResource_siteAware(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccSchemaResourceConfigSiteAware("test-schema-site-aware-1", "PRODUCT", "site_aware = true"),
+				Config: testAccSchemaResourceConfigSiteAware("test-schema-site-aware-1", "site_aware = true"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_schema.test", "site_aware", "true"),
 					testAccCheckSchemaUrlChanged(&testAccSiteAwareSchemaUrl),
@@ -327,30 +326,16 @@ func TestAccSchemaResource_siteAware(t *testing.T) {
 				ImportStateVerifyIgnore:              []string{"attributes"},
 			},
 			{
-				Config: testAccSchemaResourceConfigSiteAware("test-schema-site-aware-1", "PRODUCT", ""),
+				Config: testAccSchemaResourceConfigSiteAware("test-schema-site-aware-1", ""),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_schema.test", "site_aware", "true"),
 				),
 			},
 			{
-				Config: testAccSchemaResourceConfigSiteAware("test-schema-site-aware-1", "PRODUCT", "site_aware = false"),
+				Config: testAccSchemaResourceConfigSiteAware("test-schema-site-aware-1", "site_aware = false"),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("emporix_schema.test", "site_aware", "false"),
 				),
-			},
-		},
-	})
-}
-
-func TestAccSchemaResource_siteAwareUnsupportedType(t *testing.T) {
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config:      testAccSchemaResourceConfigSiteAware("test-schema-site-aware-2", "CART", "site_aware = true"),
-				PlanOnly:    true,
-				ExpectError: regexp.MustCompile("Unsupported Schema Type for Site-Aware Mixin"),
 			},
 		},
 	})
@@ -374,15 +359,15 @@ func testAccCheckSchemaUrlChanged(previous *string) resource.TestCheckFunc {
 	})
 }
 
-func testAccSchemaResourceConfigSiteAware(id string, schemaType string, siteAwareLine string) string {
+func testAccSchemaResourceConfigSiteAware(id string, siteAwareLine string) string {
 	return fmt.Sprintf(`
 resource "emporix_schema" "test" {
   id = %[1]q
   name = {
     en = "Market Attributes"
   }
-  types = [%[2]q]
-  %[3]s
+  types = ["PRODUCT"]
+  %[2]s
 
   attributes = [
     {
@@ -400,7 +385,7 @@ resource "emporix_schema" "test" {
     }
   ]
 }
-`, id, schemaType, siteAwareLine)
+`, id, siteAwareLine)
 }
 
 // testAccSchemaResourceConfigNoId generates a schema configuration without an id
