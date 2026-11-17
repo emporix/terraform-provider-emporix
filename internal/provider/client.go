@@ -1457,6 +1457,11 @@ func (c *EmporixClient) UpdateSchema(ctx context.Context, id string, updateData 
 		updateData.Metadata.Version = schema.Metadata.Version
 	}
 
+	// A PUT without siteAware resets the flag to false, so keep the current value when none is given
+	if updateData.SiteAware == nil {
+		updateData.SiteAware = &schema.SiteAware
+	}
+
 	path := fmt.Sprintf("/schema/%s/schemas/%s", strings.ToLower(c.Tenant), id)
 
 	// Name is always a map, so always use Content-Language: *

@@ -169,6 +169,7 @@ type Schema struct {
 	Name       map[string]string `json:"name"`
 	Types      []string          `json:"types"`
 	Attributes []SchemaAttribute `json:"attributes"`
+	SiteAware  bool              `json:"siteAware"`
 	Metadata   *SchemaMetadata   `json:"metadata,omitempty"`
 }
 
@@ -178,6 +179,7 @@ type SchemaCreate struct {
 	Name       map[string]string `json:"name"`
 	Types      []string          `json:"types"`
 	Attributes []SchemaAttribute `json:"attributes"`
+	SiteAware  *bool             `json:"siteAware,omitempty"`
 }
 
 // SchemaUpdate represents the update payload for a schema
@@ -185,6 +187,7 @@ type SchemaUpdate struct {
 	Name       map[string]string     `json:"name"`
 	Types      []string              `json:"types"`
 	Attributes []SchemaAttribute     `json:"attributes"`
+	SiteAware  *bool                 `json:"siteAware,omitempty"`
 	Metadata   *SchemaMetadataUpdate `json:"metadata"`
 }
 
