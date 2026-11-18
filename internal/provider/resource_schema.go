@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -36,6 +37,7 @@ type SchemaResourceModel struct {
 	Name       types.Map     `tfsdk:"name"`
 	Types      types.List    `tfsdk:"types"`
 	Attributes types.Dynamic `tfsdk:"attributes"`
+	SiteAware  types.Bool    `tfsdk:"site_aware"`
 	SchemaUrl  types.String  `tfsdk:"schema_url"`
 }
 
@@ -69,6 +71,16 @@ func (r *SchemaResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				MarkdownDescription: "List of schema types. Valid values: CART, CATEGORY, COMPANY, COUPON, CUSTOMER, CUSTOMER_ADDRESS, ORDER, PRODUCT, QUOTE, RETURN, PRICE_LIST, SITE, CUSTOM_ENTITY, VENDOR.",
 				ElementType:         types.StringType,
 				Required:            true,
+			},
+			"site_aware": schema.BoolAttribute{
+				MarkdownDescription: "Whether the schema is a site-aware mixin. When `true`, products and custom instances using this mixin may store per-site overlays under keys in the form `{mixinName}__{siteCode}`. " +
+					"Supported for `PRODUCT` and custom entity types only. If omitted, the value stored in Emporix is kept (`false` for new schemas). " +
+					"Changing it releases a new schema version, so `schema_url` changes.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"schema_url": schema.StringAttribute{
 				MarkdownDescription: "The URL of the schema, as returned by the API in the metadata.url field.",
@@ -147,6 +159,9 @@ func (r *SchemaResource) Create(ctx context.Context, req resource.CreateRequest,
 		Name:       nameMap,
 		Types:      typesList,
 		Attributes: attributes,
+	}
+	if !data.SiteAware.IsUnknown() {
+		schemaCreate.SiteAware = data.SiteAware.ValueBoolPointer()
 	}
 
 	schema, err := r.client.CreateSchema(ctx, schemaCreate)
@@ -246,6 +261,7 @@ func (r *SchemaResource) Update(ctx context.Context, req resource.UpdateRequest,
 		Name:       nameMap,
 		Types:      typesList,
 		Attributes: attributes,
+		SiteAware:  data.SiteAware.ValueBoolPointer(),
 	}
 
 	// Update schema via API
@@ -257,12 +273,18 @@ func (r *SchemaResource) Update(ctx context.Context, req resource.UpdateRequest,
 
 	// Preserve the original attributes from the plan to maintain exact type structure
 	originalAttributes := data.Attributes
+	plannedSiteAware := data.SiteAware
 
 	// Map updated response to model
 	mapSchemaToModel(ctx, schema, &data, &resp.Diagnostics)
 
 	// Restore the original attributes to preserve the exact type structure from the plan
 	data.Attributes = originalAttributes
+
+	// State written before site_aware existed plans as null; the applied value must match the plan
+	if plannedSiteAware.IsNull() {
+		data.SiteAware = plannedSiteAware
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -327,6 +349,8 @@ func mapSchemaToModel(ctx context.Context, schema *Schema, data *SchemaResourceM
 	attrsDynamic, d := convertAttributesToDynamic(ctx, schema.Attributes)
 	diags.Append(d...)
 	data.Attributes = attrsDynamic
+
+	data.SiteAware = types.BoolValue(schema.SiteAware)
 
 	// Set schema_url from metadata.url
 	if schema.Metadata != nil && schema.Metadata.URL != "" {

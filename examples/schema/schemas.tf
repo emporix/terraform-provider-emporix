@@ -760,6 +760,33 @@ resource "emporix_schema" "auto_generated_id" {
   ]
 }
 
+# Example 12: Site-aware mixin schema
+# Products using this mixin can store per-site overlays under mixins.{mixinName}__{siteCode}
+resource "emporix_schema" "market_attributes" {
+  id = "market-attributes"
+  name = {
+    en = "Market Attributes"
+  }
+  types      = ["PRODUCT"]
+  site_aware = true
+
+  attributes = [
+    {
+      key = "taxCategory"
+      name = {
+        en = "Tax Category"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    }
+  ]
+}
+
 # Outputs
 output "product_schemas" {
   description = "Product schema IDs and URLs"

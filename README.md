@@ -126,7 +126,12 @@ make testacc
 make testacc-country
 make testacc-paymentmode
 make testacc-sitesettings
+make testacc-schema
 ```
+
+The schema tests need the `schema.schema_read` and `schema.schema_manage` scopes and a tenant with the `en` and `de` languages enabled.
+
+To run against another environment, set `EMPORIX_API_URL` (defaults to `https://api.emporix.io`).
 
 ### Manual Setup (Alternative)
 

@@ -535,6 +535,37 @@ resource "emporix_schema" "shared_metadata" {
 }
 ```
 
+### Site-Aware Mixin Schema
+
+With `site_aware = true`, products and custom instances using this mixin can store per-site overlays under `mixins.{mixinName}__{siteCode}`. Supported for `PRODUCT` and custom entity types only.
+
+```terraform
+resource "emporix_schema" "market_attributes" {
+  id = "market-attributes"
+  name = {
+    en = "Market Attributes"
+  }
+  types      = ["PRODUCT"]
+  site_aware = true
+
+  attributes = [
+    {
+      key = "taxCategory"
+      name = {
+        en = "Tax Category"
+      }
+      type = "TEXT"
+      metadata = {
+        read_only  = false
+        localized  = false
+        required   = false
+        nullable   = true
+      }
+    }
+  ]
+}
+```
+
 ### Dynamic Schema Creation
 
 ```terraform
@@ -591,6 +622,7 @@ resource "emporix_schema" "entities" {
 ### Optional
 
 - `id` (String) Schema identifier. If not provided, the API will generate one automatically. Cannot be changed after creation. Changing this forces a new resource to be created.
+- `site_aware` (Boolean) Whether the schema is a site-aware mixin. When `true`, products and custom instances using this mixin may store per-site overlays under keys in the form `{mixinName}__{siteCode}`. Supported for `PRODUCT` and custom entity types only. If omitted, the value stored in Emporix is kept (`false` for new schemas). Changing it releases a new schema version, so `schema_url` changes.
 
 <a id="nestedatt--attributes"></a>
 ### Nested Schema for `attributes`
@@ -667,7 +699,7 @@ Required:
 
 ## Outputs
 
-All input arguments (`id`, `name`, `types`, `attributes`) and the computed `schema_url` attribute are available as outputs and can be referenced from other resources or outputs.
+All input arguments (`id`, `name`, `types`, `attributes`, `site_aware`) and the computed `schema_url` attribute are available as outputs and can be referenced from other resources or outputs.
 
 ### Referencing Outputs
 
